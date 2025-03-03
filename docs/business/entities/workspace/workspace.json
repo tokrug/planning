@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Workspace",
+  "description": "A workspace that contains teams, people, tasks, and other elements",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the workspace (UUID format)"
+    },
+    "name": {
+      "type": "string",
+      "description": "The name of the workspace"
+    }
+  },
+  "required": ["id", "name"]
+}

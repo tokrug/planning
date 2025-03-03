@@ -1,0 +1,22 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "planning/schedule-exception",
+    "title": "Schedule Exception",
+    "type": "object",
+    "properties": {
+      "date": {
+        "type": "string",
+        "format": "date",
+        "description": "Date in ISO format (YYYY-MM-DD)"
+      },
+      "availability": {
+        "$ref": "planning/day-capacity"
+      }
+    },
+    "required": [
+      "date",
+      "availability"
+    ],
+    "additionalProperties": false
+  }
+  

@@ -1,0 +1,40 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "planning/weekly-schedule",
+    "title": "Weekly Schedule",
+    "type": "object",
+    "properties": {
+      "monday": {
+        "$ref": "planning/day-capacity"
+      },
+      "tuesday": {
+        "$ref": "planning/day-capacity"
+      },
+      "wednesday": {
+        "$ref": "planning/day-capacity"
+      },
+      "thursday": {
+        "$ref": "planning/day-capacity"
+      },
+      "friday": {
+        "$ref": "planning/day-capacity"
+      },
+      "saturday": {
+        "$ref": "planning/day-capacity"
+      },
+      "sunday": {
+        "$ref": "planning/day-capacity"
+      }
+    },
+    "required": [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday"
+    ],
+    "additionalProperties": false
+  }
+  

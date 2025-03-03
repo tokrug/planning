@@ -1,0 +1,29 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "planning/team",
+    "title": "Team",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "name": {
+        "type": "string"
+      },
+      "people": {
+        "type": "array",
+        "items": {
+          "$ref": "planning/person"
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "people"
+    ],
+    "additionalProperties": false
+  }
+  

@@ -1,0 +1,41 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "planning/person",
+    "title": "Person",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "name": {
+        "type": "string"
+      },
+      "skills": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "weeklySchedule": {
+        "$ref": "planning/weekly-schedule"
+      },
+      "scheduleExceptions": {
+        "type": "array",
+        "items": {
+          "$ref": "planning/schedule-exception"
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "skills",
+      "weeklySchedule",
+      "scheduleExceptions"
+    ],
+    "additionalProperties": false
+  }
+  

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "planning/planning-input",
+  "title": "Planning Input",
+  "type": "object",
+  "properties": {
+    "startDate": {
+      "type": "string",
+      "format": "date",
+      "description": "Start date of the planning period in ISO format (YYYY-MM-DD)"
+    },
+    "backlog": {
+      "type": "array",
+      "items": {
+        "$ref": "planning/task"
+      },
+      "description": "The ordered list of tasks. Their order defines their priorities."
+    },
+    "teams": {
+      "type": "array",
+      "items": {
+        "$ref": "planning/team"
+      },
+      "description": "The list of teams that should be taken into account when planning the work",
+      "default": []
+    }
+  },
+  "required": [
+    "backlog",
+    "teams"
+  ],
+  "additionalProperties": false
+}

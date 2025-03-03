@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "planning/task",
+  "title": "Task",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "estimate": {
+      "type": "number",
+      "description": "Estimate in Mandays",
+      "minimum": 0
+    },
+    "subtasks": {
+      "type": "array",
+      "description": "Array of subtasks",
+      "items": {
+        "$ref": "#"
+      },
+      "default": []
+    },
+    "blockedBy": {
+      "type": "array",
+      "description": "Array of tasks that block this task",
+      "items": {
+        "$ref": "#"
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "description",
+    "estimate"
+  ],
+  "additionalProperties": false
+}

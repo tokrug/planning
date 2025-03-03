@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "planning/plan",
+  "title": "Plan",
+  "type": "object",
+  "properties": {
+    "timeline": {
+      "type": "array",
+      "items": {
+        "$ref": "planning/planned-task"
+      },
+      "description": "The ordered list of tasks. Their order defines their priorities."
+    }
+  },
+  "required": [
+    "timeline"
+  ],
+  "additionalProperties": false
+}
