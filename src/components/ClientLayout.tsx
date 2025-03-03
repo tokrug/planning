@@ -59,6 +59,7 @@ const ClientLayout: React.FC<ClientLayoutProps> = ({ children }) => {
             boxSizing: 'border-box',
             backgroundColor: '#f5f5f5',
             transition: 'left 0.2s ease-in-out',
+            width: `calc(100% - ${currentDrawerWidth}px)`, // Ensure full width minus drawer
           }}
         >
           {children}

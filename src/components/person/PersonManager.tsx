@@ -18,7 +18,11 @@ import {
   createPerson
 } from '@/repository/personRepository';
 
-export const PersonManager: React.FC = () => {
+interface PersonManagerProps {
+  workspaceId: string;
+}
+
+export const PersonManager: React.FC<PersonManagerProps> = ({ workspaceId }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [notification, setNotification] = useState<{
     message: string;
@@ -40,16 +44,9 @@ export const PersonManager: React.FC = () => {
 
   const handleFormSubmit = async (data: Omit<Person, 'id'>) => {
     try {
-      // Create new person
-      await createPerson({
-        name: data.name,
-        skills: data.skills,
-        weeklySchedule: data.weeklySchedule,
-        scheduleExceptions: data.scheduleExceptions
-      });
-      showNotification('Person created successfully', 'success');
-      
+      await createPerson(workspaceId, data);
       setIsFormOpen(false);
+      showNotification('Person created successfully', 'success');
     } catch (error) {
       console.error('Error creating person:', error);
       showNotification('Failed to create person', 'error');
@@ -69,38 +66,28 @@ export const PersonManager: React.FC = () => {
   };
 
   return (
-    <Box sx={{ width: '100%', py: 0 }}>
-      <Paper sx={{ p: 3, mb: 2, width: '100%' }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Team Management
-        </Typography>
-        <Typography variant="body1" color="text.secondary" paragraph>
-          Manage team members, their skills, and availability schedules.
-        </Typography>
+    <Box>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h5" component="h1">People</Typography>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />} 
+          onClick={handleCreateClick}
+        >
+          Add Person
+        </Button>
+      </Stack>
+
+      <Paper sx={{ mb: 3 }}>
+        <PersonList workspaceId={workspaceId} onListChanged={() => showNotification('List updated', 'success')} />
       </Paper>
 
-      {isFormOpen ? (
-        <PersonForm 
-          onSubmit={handleFormSubmit} 
-          onCancel={handleCloseForm} 
-        />
-      ) : (
-        <Box>
-          <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-            <Button 
-              variant="contained" 
-              startIcon={<AddIcon />}
-              onClick={handleCreateClick}
-            >
-              Add New Team Member
-            </Button>
-          </Stack>
-          
-          <PersonList 
-            onDeleted={() => showNotification('Person deleted successfully', 'success')} 
-          />
-        </Box>
-      )}
+      <PersonForm 
+        open={isFormOpen} 
+        onClose={handleCloseForm} 
+        onSubmit={handleFormSubmit}
+        workspaceId={workspaceId}
+      />
 
       <Snackbar 
         open={notification.open} 

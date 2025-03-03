@@ -27,7 +27,8 @@ import {
   DialogContent,
   DialogActions,
   Divider,
-  Alert
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -48,13 +49,17 @@ import { Moment } from 'moment';
 import moment from 'moment';
 
 interface PersonFormProps {
+  open: boolean;
+  workspaceId: string;
   onSubmit: (person: Omit<Person, 'id'>) => void;
-  onCancel: () => void;
+  onClose: () => void;
 }
 
 export const PersonForm: React.FC<PersonFormProps> = ({ 
+  open,
+  workspaceId,
   onSubmit, 
-  onCancel 
+  onClose 
 }) => {
   // State for form data
   const [formData, setFormData] = useState<Omit<Person, 'id'>>({
@@ -97,45 +102,48 @@ export const PersonForm: React.FC<PersonFormProps> = ({
     availabilityId: ''
   });
 
-  // Fetch day capacities and initialize form when component mounts
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch day capacities
-        const capacities = await getAllDayCapacities();
-        setDayCapacities(capacities);
-        
-        // If editing an existing person, populate the form
-        if (person) {
-          setFormData({
-            id: person.id,
-            name: person.name,
-            skills: [...person.skills],
-            weeklySchedule: person.weeklySchedule,
-            scheduleExceptions: [...person.scheduleExceptions]
-          });
-        } else {
-          // If creating a new person, initialize with a standard schedule
-          const standardSchedule = await createStandardWeeklySchedule();
-          setFormData(prev => ({
-            ...prev,
-            weeklySchedule: standardSchedule
-          }));
-        }
-        
-        setApiError(null);
-      } catch (error) {
-        console.error('Error initializing form:', error);
-        setApiError('Failed to load form data. Please make sure day capacities are seeded.');
-      } finally {
-        setLoading(false);
+    if (open) {
+      initialize();
+    }
+  }, [open, workspaceId]);
+
+  const initialize = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch day capacities for schedule setup
+      const capacities = await getAllDayCapacities(workspaceId);
+      setDayCapacities(capacities);
+      
+      // Find default capacities for initial setup
+      const dayOff = capacities.find(c => c.id === 'day-off');
+      const workDay = capacities.find(c => c.id === 'full');
+      
+      if (dayOff && workDay) {
+        // Set up a standard weekly schedule (work days Mon-Fri, off on weekends)
+        setFormData(prev => ({
+          ...prev,
+          weeklySchedule: {
+            monday: workDay,
+            tuesday: workDay,
+            wednesday: workDay,
+            thursday: workDay,
+            friday: workDay,
+            saturday: dayOff,
+            sunday: dayOff
+          }
+        }));
       }
-    };
-    
-    initialize();
-  }, [person]);
+      
+      setApiError(null);
+    } catch (err) {
+      console.error('Error initializing form:', err);
+      setApiError('Failed to load required data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Handle text input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -277,8 +285,52 @@ export const PersonForm: React.FC<PersonFormProps> = ({
     return `${value * 100}%`;
   };
 
+  const handleCancel = () => {
+    resetForm();
+    onClose();
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      skills: [],
+      weeklySchedule: {
+        monday: { id: '', name: '', availability: 0 },
+        tuesday: { id: '', name: '', availability: 0 },
+        wednesday: { id: '', name: '', availability: 0 },
+        thursday: { id: '', name: '', availability: 0 },
+        friday: { id: '', name: '', availability: 0 },
+        saturday: { id: '', name: '', availability: 0 },
+        sunday: { id: '', name: '', availability: 0 }
+      },
+      scheduleExceptions: []
+    });
+    setNewSkill('');
+    setExceptionDialogOpen(false);
+    setErrors({});
+  };
+
   if (loading) {
-    return <Typography>Loading form data...</Typography>;
+    return (
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Loading form data...
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+            <CircularProgress />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancel}>Cancel</Button>
+        </DialogActions>
+      </Dialog>
+    );
   }
 
   if (apiError) {
@@ -290,235 +342,245 @@ export const PersonForm: React.FC<PersonFormProps> = ({
   }
 
   return (
-    <Paper sx={{ p: 3, width: '100%' }}>
-      <Typography variant="h6" gutterBottom>
-        {person ? 'Edit Person' : 'Create New Person'}
-      </Typography>
-      
-      <Box component="form" onSubmit={handleSubmit} noValidate>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <TextField
-              required
-              name="name"
-              label="Name"
-              fullWidth
-              value={formData.name}
-              onChange={handleInputChange}
-              error={!!errors.name}
-              helperText={errors.name || "Person's full name"}
-              placeholder="e.g., John Doe"
-            />
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" gutterBottom>
-              Skills
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+    >
+      <DialogTitle>
+        Create New Person
+      </DialogTitle>
+      <DialogContent>
+        <Box component="form" onSubmit={handleSubmit} noValidate>
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
               <TextField
-                name="newSkill"
-                label="Add Skill"
-                value={newSkill}
-                onChange={(e) => setNewSkill(e.target.value)}
-                placeholder="e.g., JavaScript, React, Node.js"
+                required
+                name="name"
+                label="Name"
                 fullWidth
+                value={formData.name}
+                onChange={handleInputChange}
+                error={!!errors.name}
+                helperText={errors.name || "Person's full name"}
+                placeholder="e.g., John Doe"
               />
-              <Button 
-                variant="outlined" 
-                onClick={handleAddSkill}
-                disabled={!newSkill.trim()}
-                startIcon={<AddIcon />}
-              >
-                Add
-              </Button>
-            </Stack>
+            </Grid>
             
-            <Box sx={{ mt: 1, mb: 2 }}>
-              {formData.skills.length > 0 ? (
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  {formData.skills.map((skill, index) => (
-                    <Chip
-                      key={index}
-                      label={skill}
-                      onDelete={() => handleRemoveSkill(skill)}
-                      color="primary"
-                      sx={{ m: 0.5 }}
-                    />
-                  ))}
-                </Stack>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  No skills added yet
-                </Typography>
-              )}
-            </Box>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle1" gutterBottom>
-              Weekly Schedule
-            </Typography>
-            
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Day</TableCell>
-                  <TableCell>Capacity Type</TableCell>
-                  <TableCell>Availability</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {/* Define ordered weekdays array */}
-                {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => (
-                  <TableRow key={day}>
-                    <TableCell sx={{ textTransform: 'capitalize' }}>
-                      {day}
-                    </TableCell>
-                    <TableCell>
-                      <FormControl fullWidth size="small">
-                        <Select
-                          value={formData.weeklySchedule[day as keyof WeeklySchedule].id}
-                          onChange={(e) => handleDayCapacityChange(day as keyof WeeklySchedule, e.target.value)}
-                        >
-                          {dayCapacities.map((dayCapacity) => (
-                            <MenuItem key={dayCapacity.id} value={dayCapacity.id}>
-                              {dayCapacity.name}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </TableCell>
-                    <TableCell>
-                      {formatAvailability(formData.weeklySchedule[day as keyof WeeklySchedule].availability)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Divider sx={{ my: 2 }} />
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="subtitle1">
-                Schedule Exceptions
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom>
+                Skills
               </Typography>
-              <Button 
-                variant="outlined" 
-                startIcon={<DateRangeIcon />}
-                onClick={handleOpenExceptionDialog}
-              >
-                Add Exception
-              </Button>
-            </Stack>
+              <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                <TextField
+                  name="newSkill"
+                  label="Add Skill"
+                  value={newSkill}
+                  onChange={(e) => setNewSkill(e.target.value)}
+                  placeholder="e.g., JavaScript, React, Node.js"
+                  fullWidth
+                />
+                <Button 
+                  variant="outlined" 
+                  onClick={handleAddSkill}
+                  disabled={!newSkill.trim()}
+                  startIcon={<AddIcon />}
+                >
+                  Add
+                </Button>
+              </Stack>
+              
+              <Box sx={{ mt: 1, mb: 2 }}>
+                {formData.skills.length > 0 ? (
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    {formData.skills.map((skill, index) => (
+                      <Chip
+                        key={index}
+                        label={skill}
+                        onDelete={() => handleRemoveSkill(skill)}
+                        color="primary"
+                        sx={{ m: 0.5 }}
+                      />
+                    ))}
+                  </Stack>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No skills added yet
+                  </Typography>
+                )}
+              </Box>
+            </Grid>
             
-            {formData.scheduleExceptions.length > 0 ? (
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" gutterBottom>
+                Weekly Schedule
+              </Typography>
+              
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Date</TableCell>
                     <TableCell>Day</TableCell>
-                    <TableCell>Type</TableCell>
+                    <TableCell>Capacity Type</TableCell>
                     <TableCell>Availability</TableCell>
-                    <TableCell>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {formData.scheduleExceptions
-                    .sort((a, b) => a.date.localeCompare(b.date))
-                    .map((exception, index) => {
-                      // Convert date string to Date object to get day name
-                      const date = new Date(exception.date);
-                      const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(date);
-                      
-                      return (
-                        <TableRow key={index}>
-                          <TableCell>{exception.date}</TableCell>
-                          <TableCell>{dayName}</TableCell>
-                          <TableCell>{exception.availability.name}</TableCell>
-                          <TableCell>{formatAvailability(exception.availability.availability)}</TableCell>
-                          <TableCell>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => handleRemoveException(exception.date)}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  }
+                  {/* Define ordered weekdays array */}
+                  {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => (
+                    <TableRow key={day}>
+                      <TableCell sx={{ textTransform: 'capitalize' }}>
+                        {day}
+                      </TableCell>
+                      <TableCell>
+                        <FormControl fullWidth size="small">
+                          <Select
+                            value={formData.weeklySchedule[day as keyof WeeklySchedule].id}
+                            onChange={(e) => handleDayCapacityChange(day as keyof WeeklySchedule, e.target.value)}
+                          >
+                            {dayCapacities.map((dayCapacity) => (
+                              <MenuItem key={dayCapacity.id} value={dayCapacity.id}>
+                                {dayCapacity.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </TableCell>
+                      <TableCell>
+                        {formatAvailability(formData.weeklySchedule[day as keyof WeeklySchedule].availability)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                No schedule exceptions added yet
-              </Typography>
-            )}
-          </Grid>
-        </Grid>
-        
-        <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-          <Button 
-            variant="contained" 
-            color="primary" 
-            type="submit"
-          >
-            {person ? 'Update' : 'Create'}
-          </Button>
-          <Button 
-            variant="outlined" 
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-        </Stack>
-      </Box>
-      
-      {/* Add Exception Dialog */}
-      <Dialog open={exceptionDialogOpen} onClose={handleCloseExceptionDialog}>
-        <DialogTitle>Add Schedule Exception</DialogTitle>
-        <DialogContent>
-          <Stack spacing={3} sx={{ mt: 1, minWidth: 300 }}>
-            <LocalizationProvider dateAdapter={AdapterMoment}>
-              <DatePicker
-                label="Select Date"
-                value={moment(newException.date)}
-                onChange={(newDate) => setNewException(prev => ({ ...prev, date: newDate?.toDate() ?? null }))}
-              />
-            </LocalizationProvider>
+            </Grid>
             
-            <FormControl fullWidth>
-              <InputLabel>Capacity Type</InputLabel>
-              <Select
-                value={newException.availabilityId}
-                label="Capacity Type"
-                onChange={(e) => setNewException(prev => ({ ...prev, availabilityId: e.target.value }))}
-              >
-                {dayCapacities.map((dayCapacity) => (
-                  <MenuItem key={dayCapacity.id} value={dayCapacity.id}>
-                    {dayCapacity.name} ({formatAvailability(dayCapacity.availability)})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                <Typography variant="subtitle1">
+                  Schedule Exceptions
+                </Typography>
+                <Button 
+                  variant="outlined" 
+                  startIcon={<DateRangeIcon />}
+                  onClick={handleOpenExceptionDialog}
+                >
+                  Add Exception
+                </Button>
+              </Stack>
+              
+              {formData.scheduleExceptions.length > 0 ? (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Day</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Availability</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {formData.scheduleExceptions
+                      .sort((a, b) => a.date.localeCompare(b.date))
+                      .map((exception, index) => {
+                        // Convert date string to Date object to get day name
+                        const date = new Date(exception.date);
+                        const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(date);
+                        
+                        return (
+                          <TableRow key={index}>
+                            <TableCell>{exception.date}</TableCell>
+                            <TableCell>{dayName}</TableCell>
+                            <TableCell>{exception.availability.name}</TableCell>
+                            <TableCell>{formatAvailability(exception.availability.availability)}</TableCell>
+                            <TableCell>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleRemoveException(exception.date)}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    }
+                  </TableBody>
+                </Table>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No schedule exceptions added yet
+                </Typography>
+              )}
+            </Grid>
+          </Grid>
+          
+          <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+            <Button 
+              variant="contained" 
+              color="primary" 
+              type="submit"
+            >
+              Save
+            </Button>
+            <Button 
+              variant="outlined" 
+              onClick={handleCancel}
+            >
+              Cancel
+            </Button>
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseExceptionDialog}>Cancel</Button>
-          <Button 
-            onClick={handleAddException}
-            disabled={!newException.date || !newException.availabilityId}
-            variant="contained"
-          >
-            Add
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Paper>
+        </Box>
+        
+        {/* Add Exception Dialog */}
+        <Dialog open={exceptionDialogOpen} onClose={handleCloseExceptionDialog}>
+          <DialogTitle>Add Schedule Exception</DialogTitle>
+          <DialogContent>
+            <Stack spacing={3} sx={{ mt: 1, minWidth: 300 }}>
+              <LocalizationProvider dateAdapter={AdapterMoment}>
+                <DatePicker
+                  label="Select Date"
+                  value={moment(newException.date)}
+                  onChange={(newDate) => setNewException(prev => ({ ...prev, date: newDate?.toDate() ?? null }))}
+                />
+              </LocalizationProvider>
+              
+              <FormControl fullWidth>
+                <InputLabel>Capacity Type</InputLabel>
+                <Select
+                  value={newException.availabilityId}
+                  label="Capacity Type"
+                  onChange={(e) => setNewException(prev => ({ ...prev, availabilityId: e.target.value }))}
+                >
+                  {dayCapacities.map((dayCapacity) => (
+                    <MenuItem key={dayCapacity.id} value={dayCapacity.id}>
+                      {dayCapacity.name} ({formatAvailability(dayCapacity.availability)})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseExceptionDialog}>Cancel</Button>
+            <Button 
+              onClick={handleAddException}
+              disabled={!newException.date || !newException.availabilityId}
+              variant="contained"
+            >
+              Add
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
   );
 };

@@ -10,20 +10,26 @@ import {
   Paper,
   Stack,
   Grid,
-  InputAdornment
+  InputAdornment,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import { DayCapacity } from '@/types/DayCapacity';
 
 interface DayCapacityFormProps {
+  open: boolean;
   dayCapacity?: DayCapacity;
   onSubmit: (dayCapacity: Omit<DayCapacity, 'id'> & { id?: string }) => void;
-  onCancel: () => void;
+  onClose: () => void;
 }
 
 export const DayCapacityForm: React.FC<DayCapacityFormProps> = ({ 
+  open,
   dayCapacity, 
   onSubmit, 
-  onCancel 
+  onClose 
 }) => {
   const [formData, setFormData] = useState<Omit<DayCapacity, 'id'> & { id?: string }>({
     name: '',
@@ -59,7 +65,7 @@ export const DayCapacityForm: React.FC<DayCapacityFormProps> = ({
 
   const handleSliderChange = (_: Event, newValue: number | number[]) => {
     const availability = newValue as number;
-    setFormData(prev => ({ ...prev, availability: availability / 100 }));
+    setFormData(prev => ({ ...prev, availability: availability }));
     
     // Clear availability error when user makes changes
     if (errors.availability) {
@@ -99,108 +105,105 @@ export const DayCapacityForm: React.FC<DayCapacityFormProps> = ({
     }
   };
 
+  const handleCancel = () => {
+    resetForm();
+    onClose();
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      availability: 0
+    });
+    setErrors({});
+  };
+
   return (
-    <Paper sx={{ p: 3, width: '100%' }}>
-      <Typography variant="h6" gutterBottom>
-        {dayCapacity ? 'Edit Day Capacity' : 'Create New Day Capacity'}
-      </Typography>
-      
-      <Box component="form" onSubmit={handleSubmit} noValidate>
-        <Grid container spacing={3}>
-          {/* Only show ID field when creating a new entry (allow custom ID) */}
-          {!dayCapacity && (
-            <Grid item xs={12}>
-              <TextField
-                name="id"
-                label="ID (Optional)"
-                helperText={errors.id || "Leave blank for auto-generated ID, or specify a custom ID"}
-                fullWidth
-                value={formData.id || ''}
-                onChange={handleInputChange}
-                error={!!errors.id}
-                placeholder="e.g., half-day, vacation"
-              />
-            </Grid>
-          )}
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>
+        {dayCapacity ? 'Edit Day Capacity' : 'Create Day Capacity'}
+      </DialogTitle>
+      <DialogContent>
+        <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 2 }}>
+          {/* Form fields */}
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="name"
+            label="Name"
+            name="name"
+            value={formData.name}
+            onChange={handleInputChange}
+            autoFocus
+          />
           
-          <Grid item xs={12}>
-            <TextField
-              required
-              name="name"
-              label="Name"
-              fullWidth
-              value={formData.name}
-              onChange={handleInputChange}
-              error={!!errors.name}
-              helperText={errors.name || "Human-readable name for this day capacity type"}
-              placeholder="e.g., Work day, Personal day"
-            />
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Typography id="availability-slider" gutterBottom>
-              Availability: {formData.availability * 100}%
+          <Box sx={{ mt: 4, mb: 2 }}>
+            <Typography gutterBottom>
+              Availability (hours)
             </Typography>
-            <Slider
-              aria-labelledby="availability-slider"
-              value={formData.availability * 100}
-              onChange={handleSliderChange}
-              valueLabelDisplay="auto"
-              step={5}
-              marks={[
-                { value: 0, label: '0%' },
-                { value: 25, label: '25%' },
-                { value: 50, label: '50%' },
-                { value: 75, label: '75%' },
-                { value: 100, label: '100%' }
-              ]}
-              min={0}
-              max={100}
-            />
-            {errors.availability && (
-              <Typography color="error" variant="caption">
-                {errors.availability}
-              </Typography>
-            )}
-          </Grid>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs>
+                <Slider
+                  value={formData.availability}
+                  onChange={handleSliderChange}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  valueLabelDisplay="auto"
+                  valueLabelFormat={(value) => `${Math.round(value * 100)}%`}
+                  marks={[
+                    { value: 0, label: '0%' },
+                    { value: 0.25, label: '25%' },
+                    { value: 0.5, label: '50%' },
+                    { value: 0.75, label: '75%' },
+                    { value: 1, label: '100%' }
+                  ]}
+                />
+              </Grid>
+              <Grid item>
+                <TextField
+                  value={formData.availability}
+                  name="availability"
+                  onChange={handleInputChange}
+                  inputProps={{
+                    step: 0.05,
+                    min: 0,
+                    max: 1,
+                    type: 'number',
+                  }}
+                  InputProps={{
+                    endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                  }}
+                  sx={{ width: '100px' }}
+                />
+              </Grid>
+            </Grid>
+          </Box>
           
-          <Grid item xs={12}>
+          {!dayCapacity && (
             <TextField
-              name="availability"
-              label="Availability (decimal)"
-              type="number"
+              margin="normal"
               fullWidth
-              value={formData.availability}
-              onChange={(e) => {
-                const value = parseFloat(e.target.value);
-                setFormData(prev => ({ ...prev, availability: isNaN(value) ? 0 : value }));
-              }}
-              error={!!errors.availability}
-              helperText={errors.availability || "Value between 0 and 1"}
-              inputProps={{ min: 0, max: 1, step: 0.05 }}
-              InputProps={{
-                endAdornment: <InputAdornment position="end">fraction</InputAdornment>
-              }}
+              id="id"
+              label="Custom ID (optional)"
+              name="id"
+              value={formData.id || ''}
+              onChange={handleInputChange}
+              helperText="Leave blank for auto-generated ID"
             />
-          </Grid>
-        </Grid>
-        
-        <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-          <Button 
-            variant="contained" 
-            color="primary" 
-            type="submit"
-          >
-            {dayCapacity ? 'Update' : 'Create'}
-          </Button>
-          <Button 
-            variant="outlined" 
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-        </Stack>
-      </Box>
-    </Paper>
+          )}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
   );
 };

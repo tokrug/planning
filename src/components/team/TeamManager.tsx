@@ -10,56 +10,53 @@ import {
   Stack,
   Paper
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import AddIcon from '@mui/icons-material/Add';
 import { TeamList } from './TeamList';
 import { TeamForm } from './TeamForm';
-import { Team } from '@/types/Team';
-import { 
-  createTeam
-} from '@/repository/teamRepository';
+import { Team } from '../../types/Team';
+import { createTeam } from '../../repository/teamRepository';
 
-export const TeamManager: React.FC = () => {
-  const [isFormOpen, setIsFormOpen] = useState(false);
+interface TeamManagerProps {
+  workspaceId: string;
+}
+
+export const TeamManager: React.FC<TeamManagerProps> = ({ workspaceId }) => {
+  const [formOpen, setFormOpen] = useState(false);
   const [notification, setNotification] = useState<{
-    message: string;
-    type: 'success' | 'error' | 'info';
     open: boolean;
+    message: string;
+    severity: 'success' | 'error';
   }>({
+    open: false,
     message: '',
-    type: 'success',
-    open: false
+    severity: 'success'
   });
 
-  const handleCreateClick = () => {
-    setIsFormOpen(true);
+  const handleOpenForm = () => {
+    setFormOpen(true);
   };
 
   const handleCloseForm = () => {
-    setIsFormOpen(false);
+    setFormOpen(false);
   };
 
-  const handleFormSubmit = async (data: Omit<Team, 'id'>) => {
+  const handleFormSubmit = async (team: Omit<Team, 'id'>) => {
     try {
-      // Create new team
-      await createTeam({
-        name: data.name,
-        people: data.people
+      await createTeam(workspaceId, team);
+      setNotification({
+        open: true, 
+        message: 'Team created successfully!', 
+        severity: 'success'
       });
-      showNotification('Team created successfully', 'success');
-      
-      setIsFormOpen(false);
+      handleCloseForm();
     } catch (error) {
       console.error('Error creating team:', error);
-      showNotification('Failed to create team', 'error');
+      setNotification({
+        open: true, 
+        message: 'Failed to create team', 
+        severity: 'error'
+      });
     }
-  };
-
-  const showNotification = (message: string, type: 'success' | 'error' | 'info') => {
-    setNotification({
-      message,
-      type,
-      open: true
-    });
   };
 
   const handleCloseNotification = () => {
@@ -67,48 +64,43 @@ export const TeamManager: React.FC = () => {
   };
 
   return (
-    <Box sx={{ width: '100%', py: 0 }}>
-      <Paper sx={{ p: 3, mb: 2, width: '100%' }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Teams Management
-        </Typography>
-        <Typography variant="body1" color="text.secondary" paragraph>
-          Create and manage teams, add or remove team members, and view team compositions.
-        </Typography>
-      </Paper>
-
-      {isFormOpen ? (
-        <TeamForm 
-          onSubmit={handleFormSubmit} 
-          onCancel={handleCloseForm} 
-        />
-      ) : (
-        <Box>
-          <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-            <Button 
-              variant="contained" 
-              startIcon={<AddIcon />}
-              onClick={handleCreateClick}
-            >
-              Create New Team
-            </Button>
-          </Stack>
-          
-          <TeamList 
-            onDeleted={() => showNotification('Team deleted successfully', 'success')} 
-          />
+    <Box sx={{ width: '100%' }}>
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button 
+            variant="contained" 
+            startIcon={<AddIcon />} 
+            onClick={handleOpenForm}
+          >
+            Add Team
+          </Button>
         </Box>
-      )}
-
+        
+        <TeamList 
+          workspaceId={workspaceId} 
+          onDeleted={() => setNotification({
+            open: true,
+            message: 'Team deleted successfully',
+            severity: 'success'
+          })} 
+        />
+      </Paper>
+      
+      <TeamForm
+        open={formOpen}
+        workspaceId={workspaceId}
+        onSubmit={handleFormSubmit}
+        onClose={handleCloseForm}
+      />
+      
       <Snackbar 
         open={notification.open} 
         autoHideDuration={6000} 
         onClose={handleCloseNotification}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert 
           onClose={handleCloseNotification} 
-          severity={notification.type} 
+          severity={notification.severity} 
           sx={{ width: '100%' }}
         >
           {notification.message}

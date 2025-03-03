@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   AppBar, 
   Toolbar, 
@@ -16,7 +16,8 @@ import {
   ListItemText,
   Divider,
   IconButton,
-  Tooltip
+  Tooltip,
+  Collapse
 } from '@mui/material';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -29,17 +30,12 @@ import {
   Login as LoginIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
-  Menu as MenuIcon
+  Menu as MenuIcon,
+  Dashboard as DashboardIcon,
+  Business as BusinessIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
-
-// Side navigation items
-const sideNavItems = [
-  { name: 'Home', path: '/', icon: <HomeIcon /> },
-  { name: 'Day Capacity', path: '/day-capacity', icon: <DayCapacityIcon /> },
-  { name: 'People', path: '/people', icon: <PersonIcon /> },
-  { name: 'Teams', path: '/teams', icon: <TeamIcon /> },
-  { name: 'Tasks', path: '/tasks', icon: <TaskIcon /> },
-];
 
 // Drawer width constants
 const drawerWidth = 240;
@@ -52,6 +48,12 @@ interface NavigationProps {
 export const Navigation: React.FC<NavigationProps> = ({ onDrawerStateChange }) => {
   const pathname = usePathname();
   const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(false);
+  
+  // Extract workspace ID from the URL if present
+  const workspaceIdMatch = pathname.match(/\/workspaces\/([^\/]+)/);
+  const workspaceId = workspaceIdMatch ? workspaceIdMatch[1] : null;
+  
+  const isInWorkspaceContext = !!workspaceId;
 
   const toggleDrawer = () => {
     const newState = !isDrawerCollapsed;
@@ -65,6 +67,30 @@ export const Navigation: React.FC<NavigationProps> = ({ onDrawerStateChange }) =
 
   // Calculate current drawer width based on collapsed state
   const currentDrawerWidth = isDrawerCollapsed ? collapsedDrawerWidth : drawerWidth;
+
+  // Generate navigation items based on whether we're in workspace context
+  const getNavigationItems = () => {
+    // Base navigation - always show Workspaces
+    const baseItems = [
+      { name: 'Workspaces', path: '/workspaces', icon: <BusinessIcon /> },
+    ];
+
+    // If we're in a workspace context, add workspace-specific items
+    if (isInWorkspaceContext) {
+      return [
+        ...baseItems,
+        { name: 'Dashboard', path: `/workspaces/${workspaceId}`, icon: <DashboardIcon /> },
+        { name: 'Teams', path: `/workspaces/${workspaceId}/teams`, icon: <TeamIcon /> },
+        { name: 'People', path: `/workspaces/${workspaceId}/people`, icon: <PersonIcon /> },
+        { name: 'Tasks', path: `/workspaces/${workspaceId}/tasks`, icon: <TaskIcon /> },
+        { name: 'Day Capacities', path: `/workspaces/${workspaceId}/day-capacity`, icon: <DayCapacityIcon /> },
+      ];
+    }
+
+    return baseItems;
+  };
+
+  const navigationItems = getNavigationItems();
 
   return (
     <>
@@ -82,7 +108,7 @@ export const Navigation: React.FC<NavigationProps> = ({ onDrawerStateChange }) =
             component="div"
             sx={{ flexGrow: 1 }}
           >
-            Planning Next
+            Planning Next {isInWorkspaceContext && `| Workspace: ${workspaceId}`}
           </Typography>
           
           {/* Top bar only has critical options like login */}
@@ -127,7 +153,7 @@ export const Navigation: React.FC<NavigationProps> = ({ onDrawerStateChange }) =
         }}>
           {/* Navigation Items */}
           <List>
-            {sideNavItems.map((item) => (
+            {navigationItems.map((item) => (
               <ListItem key={item.path} disablePadding>
                 <Tooltip title={isDrawerCollapsed ? item.name : ''} placement="right">
                   <ListItemButton 

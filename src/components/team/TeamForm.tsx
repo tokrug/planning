@@ -24,7 +24,12 @@ import {
   Alert,
   OutlinedInput,
   Checkbox,
-  Avatar
+  Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress
 } from '@mui/material';
 import { 
   Add as AddIcon,
@@ -37,13 +42,17 @@ import { Person } from '@/types/Person';
 import { getAllPersons } from '@/repository/personRepository';
 
 interface TeamFormProps {
+  open: boolean;
+  workspaceId: string;
   onSubmit: (team: Omit<Team, 'id'>) => void;
-  onCancel: () => void;
+  onClose: () => void;
 }
 
 export const TeamForm: React.FC<TeamFormProps> = ({ 
+  open,
+  workspaceId,
   onSubmit, 
-  onCancel 
+  onClose 
 }) => {
   // State for form data
   const [formData, setFormData] = useState<Omit<Team, 'id'>>({
@@ -58,34 +67,35 @@ export const TeamForm: React.FC<TeamFormProps> = ({
   }>({});
 
   // State for available people
-  const [availablePeople, setAvailablePeople] = useState<Person[]>([]);
+  const [availablePersons, setAvailablePersons] = useState<Person[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [apiError, setApiError] = useState<string | null>(null);
 
   // State for the person selector
   const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
 
-  // Load all people
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch all people
-        const people = await getAllPersons();
-        setAvailablePeople(people);
-        
-        setApiError(null);
-      } catch (error) {
-        console.error('Error initializing form:', error);
-        setApiError('Failed to load people data.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    initialize();
-  }, []);
+    if (open) {
+      initialize();
+    }
+  }, [open, workspaceId]);
+
+  const initialize = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch all available persons from the repository
+      const availablePersons = await getAllPersons(workspaceId);
+      setAvailablePersons(availablePersons);
+      
+      setErrors({});
+    } catch (err) {
+      console.error('Error initializing form:', err);
+      setApiError('Failed to load available persons');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Handle text input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,7 +114,7 @@ export const TeamForm: React.FC<TeamFormProps> = ({
     setSelectedPersonIds(values);
     
     // Update the people array in form data
-    const selectedPeople = availablePeople.filter(person => 
+    const selectedPeople = availablePersons.filter(person => 
       values.includes(person.id)
     );
     
@@ -132,11 +142,16 @@ export const TeamForm: React.FC<TeamFormProps> = ({
   };
 
   // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleSubmit = () => {
     if (validateForm()) {
-      onSubmit(formData);
+      try {
+        onSubmit(formData);
+        resetForm();
+        onClose();
+      } catch (error) {
+        console.error('Error submitting form:', error);
+        setApiError('Failed to create team. Please try again.');
+      }
     }
   };
 
@@ -150,161 +165,111 @@ export const TeamForm: React.FC<TeamFormProps> = ({
       .substring(0, 2);
   };
 
-  if (loading) {
-    return <Typography>Loading form data...</Typography>;
-  }
+  const handleCancel = () => {
+    resetForm();
+    onClose();
+  };
 
-  if (apiError) {
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      people: []
+    });
+    setSelectedPersonIds([]);
+    setErrors({});
+  };
+
+  if (loading) {
     return (
-      <Alert severity="error" sx={{ mb: 2 }}>
-        {apiError}
-      </Alert>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Loading form data...
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+            <CircularProgress />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancel}>Cancel</Button>
+        </DialogActions>
+      </Dialog>
     );
   }
 
   return (
-    <Paper sx={{ p: 3, width: '100%' }}>
-      <Typography variant="h6" gutterBottom>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+    >
+      <DialogTitle>
         Create New Team
-      </Typography>
-      
-      <Box component="form" onSubmit={handleSubmit} noValidate>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <TextField
-              required
-              name="name"
-              label="Team Name"
-              fullWidth
-              value={formData.name}
-              onChange={handleInputChange}
-              error={!!errors.name}
-              helperText={errors.name || "Enter a name for the team"}
-              placeholder="e.g., Frontend Team, Backend Team"
-            />
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle1" gutterBottom>
-              Team Members
-            </Typography>
-            
-            <FormControl fullWidth sx={{ mb: 3 }}>
-              <InputLabel id="team-members-label">Select Team Members</InputLabel>
-              <Select
-                labelId="team-members-label"
-                multiple
-                value={selectedPersonIds}
-                onChange={handlePersonChange}
-                input={<OutlinedInput label="Select Team Members" />}
-                renderValue={(selected) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((personId) => {
-                      const person = availablePeople.find(p => p.id === personId);
-                      return person ? (
-                        <Chip 
-                          key={personId} 
-                          label={person.name} 
-                          avatar={
-                            <Avatar sx={{ bgcolor: 'primary.main' }}>
-                              {getInitials(person.name)}
-                            </Avatar>
-                          }
-                        />
-                      ) : null;
-                    })}
-                  </Box>
-                )}
-              >
-                {availablePeople.map((person) => (
-                  <MenuItem key={person.id} value={person.id}>
-                    <Checkbox checked={selectedPersonIds.indexOf(person.id) > -1} />
-                    <ListItemText 
-                      primary={person.name} 
-                      secondary={person.skills.length > 0 ? person.skills.join(', ') : 'No skills'} 
-                    />
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            
-            {/* Selected Team Members */}
-            {formData.people.length > 0 ? (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Current Team Members ({formData.people.length})
-                </Typography>
-                <List>
-                  {formData.people.map((person) => (
-                    <React.Fragment key={person.id}>
-                      <ListItem>
-                        <Avatar sx={{ mr: 2, bgcolor: 'primary.main' }}>
-                          {getInitials(person.name)}
-                        </Avatar>
-                        <ListItemText
-                          primary={person.name}
-                          secondary={
-                            <Stack direction="row" spacing={1} flexWrap="wrap">
-                              {person.skills.map((skill, index) => (
-                                <Chip 
-                                  key={index} 
-                                  label={skill} 
-                                  size="small" 
-                                  color="primary" 
-                                  variant="outlined" 
-                                  sx={{ margin: '2px' }}
-                                />
-                              ))}
-                              {person.skills.length === 0 && 'No skills'}
-                            </Stack>
-                          }
-                        />
-                        <ListItemSecondaryAction>
-                          <IconButton 
-                            edge="end" 
-                            aria-label="remove" 
-                            color="error"
-                            onClick={() => {
-                              const newSelectedIds = selectedPersonIds.filter(id => id !== person.id);
-                              setSelectedPersonIds(newSelectedIds);
-                              const newPeople = formData.people.filter(p => p.id !== person.id);
-                              setFormData(prev => ({ ...prev, people: newPeople }));
-                            }}
-                          >
-                            <PersonRemoveIcon />
-                          </IconButton>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                      <Divider variant="inset" component="li" />
-                    </React.Fragment>
-                  ))}
-                </List>
-              </Box>
-            ) : (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                No team members selected
-              </Typography>
-            )}
-          </Grid>
-        </Grid>
+      </DialogTitle>
+      <DialogContent>
+        {apiError && (
+          <Alert severity="error" sx={{ mb: 3 }}>{apiError}</Alert>
+        )}
         
-        <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-          <Button 
-            variant="contained" 
-            color="primary" 
-            type="submit"
+        <TextField
+          margin="normal"
+          required
+          fullWidth
+          id="name"
+          label="Team Name"
+          name="name"
+          value={formData.name}
+          onChange={handleInputChange}
+          error={!!errors.name}
+          helperText={errors.name}
+          autoFocus
+        />
+        
+        <FormControl fullWidth margin="normal">
+          <InputLabel id="people-select-label">Team Members</InputLabel>
+          <Select
+            labelId="people-select-label"
+            id="people-select"
+            multiple
+            value={selectedPersonIds}
+            onChange={handlePersonChange}
+            input={<OutlinedInput label="Team Members" />}
+            renderValue={(selected) => (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {selected.map((personId) => {
+                  const person = availablePersons.find(p => p.id === personId);
+                  return (
+                    <Chip 
+                      key={personId} 
+                      label={person?.name || personId} 
+                      avatar={
+                        <Avatar>{getInitials(person?.name || '')}</Avatar>
+                      }
+                    />
+                  );
+                })}
+              </Box>
+            )}
           >
-            Create Team
-          </Button>
-          <Button 
-            variant="outlined" 
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-        </Stack>
-      </Box>
-    </Paper>
+            {availablePersons.map((person) => (
+              <MenuItem key={person.id} value={person.id}>
+                <Checkbox checked={selectedPersonIds.indexOf(person.id) > -1} />
+                <ListItemText primary={person.name} />
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained" disabled={loading}>Save</Button>
+      </DialogActions>
+    </Dialog>
   );
 };

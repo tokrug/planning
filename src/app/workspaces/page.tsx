@@ -6,7 +6,7 @@ import { WorkspaceList } from '@/components/workspace';
 
 export default function WorkspacesPage() {
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container sx={{ py: 4 }}>
       <WorkspaceList />
     </Container>
   );

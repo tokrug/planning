@@ -97,9 +97,8 @@ export const createPerson = async (workspaceId: string, person: Omit<Person, 'id
     // Create the person document
     await setDoc(docRef, {
       name: person.name,
-      email: person.email,
+      skills: person.skills,
       weeklySchedule: person.weeklySchedule,
-      dailyCapacity: person.dailyCapacity,
       scheduleExceptions: person.scheduleExceptions || []
     });
     
@@ -146,35 +145,58 @@ export const deletePerson = async (workspaceId: string, id: string): Promise<voi
 };
 
 /**
- * Create an empty weekly schedule
+ * Create an empty weekly schedule for a specific workspace
+ * @param workspaceId Workspace ID
  */
-export const createEmptyWeeklySchedule = async (): Promise<WeeklySchedule> => {
-  const emptyWeeklySchedule: WeeklySchedule = {
-    monday: 0,
-    tuesday: 0,
-    wednesday: 0,
-    thursday: 0,
-    friday: 0,
-    saturday: 0,
-    sunday: 0
-  };
-  
-  return emptyWeeklySchedule;
+export const createEmptyWeeklySchedule = async (workspaceId: string): Promise<WeeklySchedule> => {
+  try {
+    // Get the "day-off" day capacity
+    const dayOff = await getDayCapacityById(workspaceId, 'day-off');
+    
+    if (!dayOff) {
+      throw new Error('Day-off capacity not found. Please make sure day capacities are seeded.');
+    }
+    
+    return {
+      monday: dayOff,
+      tuesday: dayOff,
+      wednesday: dayOff,
+      thursday: dayOff,
+      friday: dayOff,
+      saturday: dayOff,
+      sunday: dayOff
+    };
+  } catch (error) {
+    console.error('Error creating empty weekly schedule:', error);
+    throw error;
+  }
 };
 
 /**
- * Create a standard weekly schedule (8 hours on weekdays)
+ * Create a standard weekly schedule (8 hours on weekdays) for a specific workspace
+ * @param workspaceId Workspace ID
  */
-export const createStandardWeeklySchedule = async (): Promise<WeeklySchedule> => {
-  const standardWeeklySchedule: WeeklySchedule = {
-    monday: 8,
-    tuesday: 8,
-    wednesday: 8,
-    thursday: 8,
-    friday: 8,
-    saturday: 0,
-    sunday: 0
-  };
-  
-  return standardWeeklySchedule;
+export const createStandardWeeklySchedule = async (workspaceId: string): Promise<WeeklySchedule> => {
+  try {
+    // Get the day capacities
+    const dayOff = await getDayCapacityById(workspaceId, 'day-off');
+    const workDay = await getDayCapacityById(workspaceId, 'full');
+    
+    if (!dayOff || !workDay) {
+      throw new Error('Required day capacities not found. Please make sure day capacities are seeded.');
+    }
+    
+    return {
+      monday: workDay,
+      tuesday: workDay,
+      wednesday: workDay,
+      thursday: workDay,
+      friday: workDay,
+      saturday: dayOff,
+      sunday: dayOff
+    };
+  } catch (error) {
+    console.error('Error creating standard weekly schedule:', error);
+    throw error;
+  }
 };

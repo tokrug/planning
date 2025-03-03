@@ -39,14 +39,20 @@ import { getAllTasks } from '@/repository/taskRepository';
 
 interface TaskFormProps {
   task?: Task;
-  onSubmit: (task: Omit<Task, 'id'> & { id?: string }) => void;
+  onSubmit: (task: Omit<Task, 'id'> & { id?: string, parentTaskId?: string | null }) => void;
   onCancel: () => void;
+  workspaceId: string;
+  open: boolean;
+  parentTaskId?: string;
 }
 
 export const TaskForm: React.FC<TaskFormProps> = ({ 
   task, 
   onSubmit, 
-  onCancel 
+  onCancel,
+  workspaceId,
+  open,
+  parentTaskId
 }) => {
   // State for form data
   const [formData, setFormData] = useState<Omit<Task, 'id'> & { id?: string }>({
@@ -70,17 +76,27 @@ export const TaskForm: React.FC<TaskFormProps> = ({
   const [apiError, setApiError] = useState<string | null>(null);
 
   // State for task selection
-  const [selectedParentTaskId, setSelectedParentTaskId] = useState<string | null>(null);
+  const [selectedParentTaskId, setSelectedParentTaskId] = useState<string | null>(parentTaskId || null);
   const [selectedBlockerIds, setSelectedBlockerIds] = useState<string[]>([]);
+
+  // State for fetching tasks
+  const [isFetchingTasks, setIsFetchingTasks] = useState<boolean>(false);
 
   // Load all tasks and initialize form data
   useEffect(() => {
+    let isMounted = true;
+    
     const initialize = async () => {
+      if (!open) return; // Skip initialization if the form is not open
+      
       try {
         setLoading(true);
+        setApiError(null);
         
         // Fetch all tasks
-        const tasks = await getAllTasks();
+        const tasks = await getAllTasks(workspaceId);
+        
+        if (!isMounted) return;
         
         // If editing an existing task, filter out the current task and its subtasks
         // to avoid circular references
@@ -88,13 +104,15 @@ export const TaskForm: React.FC<TaskFormProps> = ({
           // Helper function to collect all subtask IDs recursively
           const collectSubtaskIds = (t: Task): string[] => {
             const ids = [t.id];
-            t.subtasks?.forEach(subtask => {
-              ids.push(...collectSubtaskIds(subtask));
-            });
+            if (t.subtasks && Array.isArray(t.subtasks)) {
+              t.subtasks.forEach(subtask => {
+                ids.push(...collectSubtaskIds(subtask));
+              });
+            }
             return ids;
           };
           
-          const excludeIds = task ? collectSubtaskIds(task) : [];
+          const excludeIds = collectSubtaskIds(task);
           const filteredTasks = tasks.filter(t => !excludeIds.includes(t.id));
           setAvailableTasks(filteredTasks);
           
@@ -104,31 +122,79 @@ export const TaskForm: React.FC<TaskFormProps> = ({
             title: task.title,
             description: task.description,
             estimate: task.estimate,
-            subtasks: [...task.subtasks || []],
-            blockedBy: [...task.blockedBy || []]
+            subtasks: Array.isArray(task.subtasks) ? [...task.subtasks] : [],
+            blockedBy: Array.isArray(task.blockedBy) ? [...task.blockedBy] : []
           });
           
           // Find parent task if this is a subtask
           const parentTask = tasks.find(t => 
-            t.subtasks?.some(subtask => subtask.id === task.id)
+            Array.isArray(t.subtasks) && t.subtasks.some(subtask => subtask.id === task.id)
           );
           setSelectedParentTaskId(parentTask?.id || null);
-          setSelectedBlockerIds(task.blockedBy?.map(t => t.id) || []);
+          setSelectedBlockerIds(Array.isArray(task.blockedBy) ? task.blockedBy.map(t => t.id) : []);
         } else {
           setAvailableTasks(tasks);
+          // Initialize with blank form data
+          setFormData({
+            title: '',
+            description: '',
+            estimate: 0,
+            subtasks: [],
+            blockedBy: []
+          });
+          
+          // Set parent task ID from props if available
+          if (parentTaskId) {
+            setSelectedParentTaskId(parentTaskId);
+          }
         }
-        
-        setApiError(null);
       } catch (error) {
         console.error('Error initializing form:', error);
-        setApiError('Failed to load tasks data.');
+        if (isMounted) {
+          setApiError('Failed to load tasks data. Please try again later.');
+          // Still set available tasks to empty array to prevent errors
+          setAvailableTasks([]);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
     
     initialize();
-  }, [task]);
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
+  }, [task, workspaceId, open, parentTaskId]);
+
+  // Load existing tasks for blockers selection
+  useEffect(() => {
+    const fetchTasks = async () => {
+      if (!open) return;
+      setIsFetchingTasks(true);
+      try {
+        const tasks = await getAllTasks(workspaceId);
+        setAvailableTasks(tasks);
+      } catch (error) {
+        console.error('Error fetching tasks:', error);
+      } finally {
+        setIsFetchingTasks(false);
+      }
+    };
+
+    fetchTasks();
+  }, [open, workspaceId]);
+
+  // Set parent task ID when it changes in props
+  useEffect(() => {
+    if (parentTaskId && !task) {
+      console.log(`TaskForm: Setting parent task ID from props: ${parentTaskId}`);
+      setSelectedParentTaskId(parentTaskId);
+    }
+  }, [parentTaskId, task]);
 
   // Handle text input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -218,18 +284,19 @@ export const TaskForm: React.FC<TaskFormProps> = ({
   };
 
   // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (validateForm()) {
-      // Submit the task with parent task ID
-      const taskToSubmit = { 
+      console.log('Submitting form with data:', {
         ...formData,
-        parentTaskId: selectedParentTaskId  // Add parentTaskId to the submission
-      };
+        parentTaskId: selectedParentTaskId
+      });
       
-      // Submit the task data
-      onSubmit(taskToSubmit);
+      onSubmit({
+        ...formData,
+        parentTaskId: selectedParentTaskId
+      });
     }
   };
 

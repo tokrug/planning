@@ -33,7 +33,8 @@ import {
   Alert,
   Snackbar,
   Grid,
-  OutlinedInput
+  OutlinedInput,
+  CircularProgress
 } from '@mui/material';
 import { 
   Edit as EditIcon, 
@@ -56,14 +57,15 @@ import {
 import { getAllDayCapacities } from '@/repository/dayCapacityRepository';
 
 interface PersonDetailProps {
+  workspaceId: string;
   personId: string;
 }
 
-export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
+export const PersonDetail: React.FC<PersonDetailProps> = ({ workspaceId, personId }) => {
   const router = useRouter();
   const [person, setPerson] = useState<Person | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
-  const [name, setName] = useState('');
+  const [personName, setPersonName] = useState('');
   const [dayCapacities, setDayCapacities] = useState<DayCapacity[]>([]);
   
   // Skills state and dialog
@@ -73,8 +75,8 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
 
   // Exception dialog
   const [isAddingException, setIsAddingException] = useState(false);
-  const [newException, setNewException] = useState<ScheduleException>({
-    date: new Date().toISOString().substring(0, 10),
+  const [exceptionToAdd, setExceptionToAdd] = useState<ScheduleException>({
+    date: '',
     availability: { id: '', name: '', availability: 0 }
   });
 
@@ -97,48 +99,63 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
 
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true);
       try {
-        setLoading(true);
-        // Fetch person data
-        const personData = await getPersonById(personId);
+        const personData = await getPersonById(workspaceId, personId);
         
         if (personData) {
           setPerson(personData);
-          setName(personData.name);
+          setPersonName(personData.name);
           setSkills([...personData.skills]);
+          const firstDayKey = Object.keys(personData.weeklySchedule)[0] as keyof WeeklySchedule;
+          setSelectedDay(firstDayKey);
+          if (firstDayKey) {
+            setSelectedDayCapacity(personData.weeklySchedule[firstDayKey].id);
+          }
+          if (personData.scheduleExceptions.length > 0) {
+            setExceptionToAdd({
+              date: personData.scheduleExceptions[0].date,
+              availability: personData.scheduleExceptions[0].availability
+            });
+          } else {
+            // Set default exception data if none exists
+            setExceptionToAdd({
+              date: new Date().toISOString().split('T')[0],
+              availability: {
+                id: 'day-off',
+                name: 'Day Off',
+                availability: 0
+              }
+            });
+          }
+          setError(null);
         } else {
           setError('Person not found');
         }
 
         // Fetch day capacities for schedule editing
-        const capacities = await getAllDayCapacities();
+        const capacities = await getAllDayCapacities(workspaceId);
         setDayCapacities(capacities);
         
       } catch (err) {
-        console.error('Error fetching data:', err);
-        setError('Failed to load data');
+        console.error('Error fetching person:', err);
+        setError('Failed to load person data');
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [personId]);
+  }, [workspaceId, personId]);
 
   // Handler for name editing
   const handleSaveName = async () => {
-    if (!person || name.trim() === '') return;
+    if (!person || !personName.trim()) return;
     
     try {
-      await updatePerson(person.id, { name });
+      await updatePerson(workspaceId, person.id, { name: personName });
+      setPerson({ ...person, name: personName });
       setIsEditingName(false);
-      
-      // Update local state
-      setPerson({
-        ...person,
-        name
-      });
-      
       showNotification('Name updated successfully', 'success');
     } catch (err) {
       console.error('Error updating name:', err);
@@ -166,15 +183,9 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
     if (!person) return;
     
     try {
-      await updatePerson(person.id, { skills });
+      await updatePerson(workspaceId, person.id, { skills });
+      setPerson({ ...person, skills });
       setIsEditingSkills(false);
-      
-      // Update local state
-      setPerson({
-        ...person,
-        skills
-      });
-      
       showNotification('Skills updated successfully', 'success');
     } catch (err) {
       console.error('Error updating skills:', err);
@@ -192,28 +203,24 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
   };
 
   const handleSaveSchedule = async () => {
-    if (!person || !selectedDay) return;
+    if (!person) return;
+    
+    // Create a copy of the current weekly schedule
+    const updatedWeeklySchedule = { ...person.weeklySchedule };
+    
+    // Update the selected day with the new capacity
+    if (selectedDay) {
+      updatedWeeklySchedule[selectedDay] = {
+        ...updatedWeeklySchedule[selectedDay],
+        id: selectedDayCapacity
+      };
+    }
     
     try {
-      const selectedCapacity = dayCapacities.find(dc => dc.id === selectedDayCapacity);
-      if (!selectedCapacity) return;
-      
-      // Create updated schedule
-      const updatedSchedule = {
-        ...person.weeklySchedule,
-        [selectedDay]: selectedCapacity
-      };
-      
-      await updatePerson(person.id, { weeklySchedule: updatedSchedule });
-      
-      // Update local state
-      setPerson({
-        ...person,
-        weeklySchedule: updatedSchedule
-      });
-      
+      await updatePerson(workspaceId, person.id, { weeklySchedule: updatedWeeklySchedule });
+      setPerson({ ...person, weeklySchedule: updatedWeeklySchedule });
       setIsEditingSchedule(false);
-      showNotification(`${capitalizeFirstLetter(selectedDay)} schedule updated successfully`, 'success');
+      showNotification('Schedule updated successfully', 'success');
     } catch (err) {
       console.error('Error updating schedule:', err);
       showNotification('Failed to update schedule', 'error');
@@ -225,80 +232,70 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
     if (field === 'availability') {
       const dayCapacity = dayCapacities.find(dc => dc.id === value);
       if (dayCapacity) {
-        setNewException({
-          ...newException,
+        setExceptionToAdd({
+          ...exceptionToAdd,
           availability: dayCapacity
         });
       }
     } else {
-      setNewException({
-        ...newException,
+      setExceptionToAdd({
+        ...exceptionToAdd,
         [field]: value
       });
     }
   };
 
   const handleSaveException = async () => {
-    if (!person || !newException.availability.id) return;
+    if (!person || !exceptionToAdd.date || !exceptionToAdd.availability.id) return;
     
     try {
-      // Check if there's already an exception for this date
-      const existingExceptionIndex = person.scheduleExceptions.findIndex(
-        ex => ex.date === newException.date
-      );
+      // Create a copy of the current exceptions
+      const updatedExceptions = [...person.scheduleExceptions];
       
-      let updatedExceptions;
+      // Add the new exception
+      updatedExceptions.push(exceptionToAdd);
       
-      if (existingExceptionIndex >= 0) {
-        // Update existing exception
-        updatedExceptions = [...person.scheduleExceptions];
-        updatedExceptions[existingExceptionIndex] = newException;
-      } else {
-        // Add new exception
-        updatedExceptions = [...person.scheduleExceptions, newException];
-      }
-      
-      await updatePerson(person.id, { scheduleExceptions: updatedExceptions });
+      // Update the person with the new exceptions
+      await updatePerson(workspaceId, person.id, { scheduleExceptions: updatedExceptions });
       
       // Update local state
-      setPerson({
-        ...person,
-        scheduleExceptions: updatedExceptions
-      });
+      setPerson({ ...person, scheduleExceptions: updatedExceptions });
       
-      setIsAddingException(false);
-      setNewException({
-        date: new Date().toISOString().substring(0, 10),
+      // Reset the form and close dialog
+      setExceptionToAdd({
+        date: '',
         availability: { id: '', name: '', availability: 0 }
       });
+      setIsAddingException(false);
       
       showNotification('Schedule exception added successfully', 'success');
     } catch (err) {
       console.error('Error adding exception:', err);
-      showNotification('Failed to add exception', 'error');
+      showNotification('Failed to add schedule exception', 'error');
     }
   };
 
   const handleDeleteException = async (exceptionDate: string) => {
     if (!person) return;
     
-    try {
-      const updatedExceptions = person.scheduleExceptions.filter(
-        ex => ex.date !== exceptionDate
-      );
-      
-      await updatePerson(person.id, { scheduleExceptions: updatedExceptions });
-      
-      // Update local state
-      setPerson({
-        ...person,
-        scheduleExceptions: updatedExceptions
-      });
-      
-      showNotification('Exception removed successfully', 'success');
-    } catch (err) {
-      console.error('Error removing exception:', err);
-      showNotification('Failed to remove exception', 'error');
+    if (window.confirm('Are you sure you want to delete this schedule exception?')) {
+      try {
+        // Filter out the exception to remove
+        const updatedExceptions = person.scheduleExceptions.filter(
+          exception => exception.date !== exceptionDate
+        );
+        
+        // Update the person with the filtered exceptions
+        await updatePerson(workspaceId, person.id, { scheduleExceptions: updatedExceptions });
+        
+        // Update local state
+        setPerson({ ...person, scheduleExceptions: updatedExceptions });
+        
+        showNotification('Schedule exception removed successfully', 'success');
+      } catch (err) {
+        console.error('Error removing exception:', err);
+        showNotification('Failed to remove schedule exception', 'error');
+      }
     }
   };
 
@@ -331,30 +328,36 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
   };
 
   if (loading) {
-    return <LinearProgress />;
-  }
-
-  if (error) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Alert severity="error">{error}</Alert>
+      <Container sx={{ py: 4 }}>
+        <CircularProgress />
       </Container>
     );
   }
 
-  if (!person) {
+  if (error || !person) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Alert severity="error">Person not found</Alert>
+      <Container sx={{ py: 4 }}>
+        <Paper elevation={2} sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h5" component="h2" sx={{ mb: 2 }}>
+            {error || 'Person not found'}
+          </Typography>
+          <Button 
+            startIcon={<ArrowBackIcon />} 
+            onClick={() => router.push(`/workspaces/${workspaceId}/people`)}
+          >
+            Back to People
+          </Button>
+        </Paper>
       </Container>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container sx={{ py: 4 }}>
       <Button 
         startIcon={<ArrowBackIcon />} 
-        onClick={() => router.push('/people')}
+        onClick={() => router.push(`/workspaces/${workspaceId}/people`)}
         sx={{ mb: 2 }}
       >
         Back to People
@@ -367,8 +370,8 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
             <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
               <TextField
                 fullWidth
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={personName}
+                onChange={(e) => setPersonName(e.target.value)}
                 label="Name"
                 variant="outlined"
                 size="small"
@@ -641,7 +644,7 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
                 label="Date"
                 type="date"
                 fullWidth
-                value={newException.date}
+                value={exceptionToAdd.date}
                 onChange={(e) => handleAddExceptionChange('date', e.target.value)}
                 InputLabelProps={{
                   shrink: true,
@@ -653,7 +656,7 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
                 <InputLabel id="exception-status-label">Status</InputLabel>
                 <Select
                   labelId="exception-status-label"
-                  value={newException.availability.id}
+                  value={exceptionToAdd.availability.id}
                   onChange={(e) => handleAddExceptionChange('availability', e.target.value)}
                   label="Status"
                 >
@@ -672,7 +675,7 @@ export const PersonDetail: React.FC<PersonDetailProps> = ({ personId }) => {
           <Button 
             onClick={handleSaveException} 
             variant="contained"
-            disabled={!newException.date || !newException.availability.id}
+            disabled={!exceptionToAdd.date || !exceptionToAdd.availability.id}
           >
             Save
           </Button>

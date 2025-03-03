@@ -12,7 +12,6 @@ import {
   ListItem, 
   ListItemText, 
   ListItemAvatar, 
-  ListItemSecondary, 
   Avatar, 
   Chip, 
   Button, 
@@ -24,7 +23,8 @@ import {
   DialogActions,
   Stack,
   Alert,
-  Snackbar
+  Snackbar,
+  CircularProgress
 } from '@mui/material';
 import { 
   Edit as EditIcon, 
@@ -47,87 +47,83 @@ import {
 import { getAllPersons } from '@/repository/personRepository';
 
 interface TeamDetailProps {
+  workspaceId: string;
   teamId: string;
 }
 
-export const TeamDetail: React.FC<TeamDetailProps> = ({ teamId }) => {
+export const TeamDetail: React.FC<TeamDetailProps> = ({ workspaceId, teamId }) => {
   const router = useRouter();
   const [team, setTeam] = useState<Team | null>(null);
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [teamName, setTeamName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAddPersonDialogOpen, setIsAddPersonDialogOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [newName, setNewName] = useState('');
   const [availablePeople, setAvailablePeople] = useState<Person[]>([]);
+  const [showAddPersonDialog, setShowAddPersonDialog] = useState(false);
   const [notification, setNotification] = useState<{
+    open: boolean;
     message: string;
     type: 'success' | 'error' | 'info';
-    open: boolean;
   }>({
+    open: false,
     message: '',
-    type: 'success',
-    open: false
+    type: 'info'
   });
 
   useEffect(() => {
     fetchTeam();
-  }, [teamId]);
+  }, [workspaceId, teamId]);
 
   const fetchTeam = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const teamData = await getTeamById(teamId);
-      
-      if (teamData) {
-        setTeam(teamData);
-        setTeamName(teamData.name);
+      const data = await getTeamById(workspaceId, teamId);
+      if (data) {
+        setTeam(data);
+        setNewName(data.name);
+        setError(null);
       } else {
         setError('Team not found');
       }
     } catch (err) {
+      setError('Failed to fetch team');
       console.error('Error fetching team:', err);
-      setError('Failed to load team');
     } finally {
       setLoading(false);
     }
   };
 
   const handleStartEditName = () => {
-    setIsEditingName(true);
+    setEditingName(true);
   };
 
   const handleSaveName = async () => {
-    if (!team || teamName.trim() === '') return;
+    if (!team || !newName.trim()) return;
     
     try {
-      await updateTeam(team.id, { name: teamName });
-      setIsEditingName(false);
-      // Update the team in state
-      setTeam({
-        ...team,
-        name: teamName
-      });
+      await updateTeam(workspaceId, teamId, { name: newName });
+      setTeam({ ...team, name: newName });
+      setEditingName(false);
       showNotification('Team name updated successfully', 'success');
     } catch (err) {
-      console.error('Error updating team name:', err);
       showNotification('Failed to update team name', 'error');
+      console.error('Error updating team name:', err);
     }
   };
 
   const handleAddPerson = async () => {
     try {
-      // Fetch all persons
-      const allPersons = await getAllPersons();
+      const allPeople = await getAllPersons(workspaceId);
       
-      // Filter out persons already in the team
-      const teamPersonIds = team?.people.map(p => p.id) || [];
-      const filteredPersons = allPersons.filter(person => !teamPersonIds.includes(person.id));
+      // Filter out people who are already in the team
+      const teamPersonIds = new Set(team?.people.map(p => p.id) || []);
+      const filteredPeople = allPeople.filter(p => !teamPersonIds.has(p.id));
       
-      setAvailablePeople(filteredPersons);
-      setIsAddPersonDialogOpen(true);
+      setAvailablePeople(filteredPeople);
+      setShowAddPersonDialog(true);
     } catch (err) {
-      console.error('Error loading available people:', err);
-      showNotification('Failed to load available people', 'error');
+      showNotification('Failed to fetch available people', 'error');
+      console.error('Error fetching people:', err);
     }
   };
 
@@ -135,46 +131,48 @@ export const TeamDetail: React.FC<TeamDetailProps> = ({ teamId }) => {
     if (!team) return;
     
     try {
-      await addPersonToTeam(team.id, person);
-      setIsAddPersonDialogOpen(false);
+      await addPersonToTeam(workspaceId, teamId, person);
       
-      // Update the team in state
+      // Update the local state
       setTeam({
         ...team,
         people: [...team.people, person]
       });
       
-      showNotification(`Added ${person.name} to the team`, 'success');
+      setShowAddPersonDialog(false);
+      showNotification(`${person.name} added to the team`, 'success');
     } catch (err) {
-      console.error('Error adding person to team:', err);
       showNotification('Failed to add person to team', 'error');
+      console.error('Error adding person to team:', err);
     }
   };
 
   const handleRemovePerson = async (personId: string) => {
     if (!team) return;
     
-    try {
-      await removePersonFromTeam(team.id, personId);
-      
-      // Update the team in state
-      setTeam({
-        ...team,
-        people: team.people.filter(p => p.id !== personId)
-      });
-      
-      showNotification('Team member removed successfully', 'success');
-    } catch (err) {
-      console.error('Error removing person from team:', err);
-      showNotification('Failed to remove team member', 'error');
+    if (window.confirm('Are you sure you want to remove this person from the team?')) {
+      try {
+        await removePersonFromTeam(workspaceId, teamId, personId);
+        
+        // Update the local state
+        setTeam({
+          ...team,
+          people: team.people.filter(p => p.id !== personId)
+        });
+        
+        showNotification('Person removed from team', 'success');
+      } catch (err) {
+        showNotification('Failed to remove person from team', 'error');
+        console.error('Error removing person from team:', err);
+      }
     }
   };
 
   const showNotification = (message: string, type: 'success' | 'error' | 'info') => {
     setNotification({
+      open: true,
       message,
-      type,
-      open: true
+      type
     });
   };
 
@@ -193,30 +191,28 @@ export const TeamDetail: React.FC<TeamDetailProps> = ({ teamId }) => {
   };
 
   if (loading) {
-    return <LinearProgress />;
-  }
-
-  if (error) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Alert severity="error">{error}</Alert>
+      <Container sx={{ py: 4 }}>
+        <CircularProgress />
       </Container>
     );
   }
 
-  if (!team) {
+  if (error || !team) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Alert severity="error">Team not found</Alert>
+      <Container sx={{ py: 4 }}>
+        <Paper elevation={2} sx={{ p: 4, textAlign: 'center' }}>
+          <Alert severity="error">{error || 'Team not found'}</Alert>
+        </Paper>
       </Container>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container sx={{ py: 4 }}>
       <Button 
         startIcon={<ArrowBackIcon />} 
-        onClick={() => router.push('/teams')}
+        onClick={() => router.push(`/workspaces/${workspaceId}/teams`)}
         sx={{ mb: 2 }}
       >
         Back to Teams
@@ -224,12 +220,12 @@ export const TeamDetail: React.FC<TeamDetailProps> = ({ teamId }) => {
       
       <Paper sx={{ p: 3, mb: 4 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          {isEditingName ? (
+          {editingName ? (
             <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
               <TextField
                 fullWidth
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
                 label="Team Name"
                 variant="outlined"
                 size="small"
@@ -321,8 +317,8 @@ export const TeamDetail: React.FC<TeamDetailProps> = ({ teamId }) => {
       
       {/* Dialog for adding a person to the team */}
       <Dialog 
-        open={isAddPersonDialogOpen} 
-        onClose={() => setIsAddPersonDialogOpen(false)}
+        open={showAddPersonDialog} 
+        onClose={() => setShowAddPersonDialog(false)}
         maxWidth="sm"
         fullWidth
       >
@@ -333,33 +329,18 @@ export const TeamDetail: React.FC<TeamDetailProps> = ({ teamId }) => {
               {availablePeople.map((person) => (
                 <ListItem 
                   key={person.id}
-                  button
                   onClick={() => handleAddPersonToTeam(person)}
                   divider
+                  sx={{ cursor: 'pointer' }}
                 >
                   <ListItemAvatar>
                     <Avatar sx={{ bgcolor: 'primary.main' }}>
                       {getInitials(person.name)}
                     </Avatar>
                   </ListItemAvatar>
-                  <ListItemText
+                  <ListItemText 
                     primary={person.name}
-                    secondary={
-                      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                        {person.skills.map((skill, index) => (
-                          <Chip 
-                            key={index} 
-                            label={skill} 
-                            size="small" 
-                            color="primary" 
-                            variant="outlined" 
-                          />
-                        ))}
-                        {person.skills.length === 0 && (
-                          <Typography variant="caption">No skills defined</Typography>
-                        )}
-                      </Stack>
-                    }
+                    secondary={person.skills?.join(', ')}
                   />
                 </ListItem>
               ))}
@@ -371,7 +352,7 @@ export const TeamDetail: React.FC<TeamDetailProps> = ({ teamId }) => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIsAddPersonDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setShowAddPersonDialog(false)}>Cancel</Button>
         </DialogActions>
       </Dialog>
       

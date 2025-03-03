@@ -15,16 +15,28 @@ import {
 import { db } from '@/lib/firebase/clientApp';
 import { DayCapacity } from '@/types/DayCapacity';
 
-const COLLECTION_NAME = 'dayCapacities';
+/**
+ * Get day capacities collection reference for a specific workspace
+ */
+const getDayCapacitiesCollectionRef = (workspaceId: string) => {
+  return collection(db, 'workspaces', workspaceId, 'dayCapacities');
+};
 
 /**
- * Get all day capacity entries from the database
+ * Get day capacity document reference for a specific workspace
  */
-export const getAllDayCapacities = async (): Promise<DayCapacity[]> => {
+const getDayCapacityDocRef = (workspaceId: string, dayCapacityId: string) => {
+  return doc(db, 'workspaces', workspaceId, 'dayCapacities', dayCapacityId);
+};
+
+/**
+ * Get all day capacity entries from the database for a specific workspace
+ */
+export const getAllDayCapacities = async (workspaceId: string): Promise<DayCapacity[]> => {
   try {
     const querySnapshot = await getDocs(
       query(
-        collection(db, COLLECTION_NAME),
+        getDayCapacitiesCollectionRef(workspaceId),
         orderBy('name')
       )
     );
@@ -40,11 +52,11 @@ export const getAllDayCapacities = async (): Promise<DayCapacity[]> => {
 };
 
 /**
- * Get a day capacity by its ID
+ * Get a day capacity by its ID from a specific workspace
  */
-export const getDayCapacityById = async (id: string): Promise<DayCapacity | null> => {
+export const getDayCapacityById = async (workspaceId: string, id: string): Promise<DayCapacity | null> => {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
+    const docRef = getDayCapacityDocRef(workspaceId, id);
     const docSnapshot = await getDoc(docRef);
     
     if (docSnapshot.exists()) {
@@ -62,11 +74,11 @@ export const getDayCapacityById = async (id: string): Promise<DayCapacity | null
 };
 
 /**
- * Create a new day capacity entry with auto-generated ID
+ * Create a new day capacity entry with auto-generated ID in a specific workspace
  */
-export const createDayCapacity = async (dayCapacity: Omit<DayCapacity, 'id'>): Promise<DayCapacity> => {
+export const createDayCapacity = async (workspaceId: string, dayCapacity: Omit<DayCapacity, 'id'>): Promise<DayCapacity> => {
   try {
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+    const docRef = await addDoc(getDayCapacitiesCollectionRef(workspaceId), {
       name: dayCapacity.name,
       availability: dayCapacity.availability
     });
@@ -82,11 +94,11 @@ export const createDayCapacity = async (dayCapacity: Omit<DayCapacity, 'id'>): P
 };
 
 /**
- * Create a new day capacity entry with a specific ID
+ * Create a new day capacity entry with a specific ID in a specific workspace
  */
-export const createDayCapacityWithId = async (id: string, dayCapacity: Omit<DayCapacity, 'id'>): Promise<DayCapacity> => {
+export const createDayCapacityWithId = async (workspaceId: string, id: string, dayCapacity: Omit<DayCapacity, 'id'>): Promise<DayCapacity> => {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
+    const docRef = getDayCapacityDocRef(workspaceId, id);
     
     // Use setDoc instead of updateDoc because it will create the document if it doesn't exist
     await setDoc(docRef, {
@@ -105,11 +117,11 @@ export const createDayCapacityWithId = async (id: string, dayCapacity: Omit<DayC
 };
 
 /**
- * Update an existing day capacity entry
+ * Update an existing day capacity entry in a specific workspace
  */
-export const updateDayCapacity = async (id: string, dayCapacity: Partial<Omit<DayCapacity, 'id'>>): Promise<void> => {
+export const updateDayCapacity = async (workspaceId: string, id: string, dayCapacity: Partial<Omit<DayCapacity, 'id'>>): Promise<void> => {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
+    const docRef = getDayCapacityDocRef(workspaceId, id);
     await updateDoc(docRef, dayCapacity as DocumentData);
   } catch (error) {
     console.error(`Error updating day capacity with ID ${id}:`, error);
@@ -118,11 +130,11 @@ export const updateDayCapacity = async (id: string, dayCapacity: Partial<Omit<Da
 };
 
 /**
- * Delete a day capacity entry
+ * Delete a day capacity entry from a specific workspace
  */
-export const deleteDayCapacity = async (id: string): Promise<void> => {
+export const deleteDayCapacity = async (workspaceId: string, id: string): Promise<void> => {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
+    const docRef = getDayCapacityDocRef(workspaceId, id);
     await deleteDoc(docRef);
   } catch (error) {
     console.error(`Error deleting day capacity with ID ${id}:`, error);
@@ -131,10 +143,10 @@ export const deleteDayCapacity = async (id: string): Promise<void> => {
 };
 
 /**
- * Seed predefined day capacity entries
+ * Seed predefined day capacity entries for a specific workspace
  * This function can be used to initialize the database with default values
  */
-export const seedDefaultDayCapacities = async (): Promise<void> => {
+export const seedDefaultDayCapacities = async (workspaceId: string): Promise<void> => {
   const defaults: DayCapacity[] = [
     {
       id: 'day-off',
@@ -170,7 +182,7 @@ export const seedDefaultDayCapacities = async (): Promise<void> => {
 
   try {
     for (const dayCapacity of defaults) {
-      const docRef = doc(db, COLLECTION_NAME, dayCapacity.id);
+      const docRef = getDayCapacityDocRef(workspaceId, dayCapacity.id);
       await setDoc(docRef, {
         name: dayCapacity.name,
         availability: dayCapacity.availability

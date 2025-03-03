@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Table, 
   TableBody, 
@@ -28,58 +28,83 @@ import {
   Group as GroupIcon
 } from '@mui/icons-material';
 import { Team } from '@/types/Team';
-import { getAllTeams, deleteTeam } from '@/repository/teamRepository';
+import { Person } from '@/types/Person';
+import { deleteTeam } from '@/repository/teamRepository';
+import { useEntityCollection } from '@/lib/firebase/entityHooks';
+import { getPersonById } from '@/repository/personRepository';
 
 interface TeamListProps {
-  onDeleted: () => void;
+  workspaceId: string;
+  onDeleted?: () => void;
 }
 
-export const TeamList: React.FC<TeamListProps> = ({ onDeleted }) => {
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+export const TeamList: React.FC<TeamListProps> = ({ workspaceId, onDeleted }) => {
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  const fetchTeams = async () => {
-    try {
-      setLoading(true);
-      const data = await getAllTeams();
-      setTeams(data);
-      setError(null);
-    } catch (err) {
-      setError('Failed to fetch teams');
-      console.error('Error fetching teams:', err);
-    } finally {
-      setLoading(false);
-    }
+  // Transform function to hydrate person references
+  const hydrateTeams = async (teams: (Team & { id: string })[], workspaceId: string): Promise<(Team & { id: string })[]> => {
+    return await Promise.all(
+      teams.map(async (team) => {
+        // The people array from Firestore will be an array of string IDs
+        const personIds = team.people as unknown as string[];
+        
+        // Fetch each person by ID (from workspace)
+        const peoplePromises = personIds.map(id => getPersonById(workspaceId, id));
+        const peopleResults = await Promise.all(peoplePromises);
+        
+        // Filter out any null results (in case a person was deleted)
+        const people = peopleResults.filter((person): person is Person => person !== null);
+        
+        // Return the team with hydrated person objects
+        return {
+          ...team,
+          people
+        };
+      })
+    );
   };
 
-  useEffect(() => {
-    fetchTeams();
-  }, []);
+  // Use our real-time hook for teams collection
+  const { 
+    entities: teams, 
+    loading, 
+    error, 
+    deleteEntity
+  } = useEntityCollection<Team>(
+    workspaceId, 
+    'teams',
+    [], // no conditions
+    [{ field: 'name', direction: 'asc' }], // sort by name
+    hydrateTeams // transform function
+  );
+
+  const toggleRow = (id: string) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const isRowExpanded = (id: string): boolean => {
+    return expandedRows.has(id);
+  };
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this team?')) {
       try {
-        await deleteTeam(id);
-        await fetchTeams();
-        onDeleted();
-      } catch (err) {
-        setError('Failed to delete team');
-        console.error('Error deleting team:', err);
+        await deleteEntity(id);
+        if (onDeleted) {
+          onDeleted();
+        }
+      } catch (error) {
+        console.error('Error deleting team:', error);
       }
     }
-  };
-
-  const toggleRow = (id: string) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
-
-  const isRowExpanded = (id: string): boolean => {
-    return !!expandedRows[id];
   };
 
   // Get initials for avatar
@@ -99,7 +124,7 @@ export const TeamList: React.FC<TeamListProps> = ({ onDeleted }) => {
   if (error) {
     return (
       <Typography color="error" variant="body1">
-        {error}
+        {error.message}
       </Typography>
     );
   }
@@ -129,7 +154,7 @@ export const TeamList: React.FC<TeamListProps> = ({ onDeleted }) => {
                       }
                     }}
                     onClick={() => {
-                      window.location.href = `/teams/${team.id}`;
+                      window.location.href = `/workspaces/${workspaceId}/teams/${team.id}`;
                     }}
                   >
                     <GroupIcon sx={{ mr: 1, color: 'primary.main' }} />

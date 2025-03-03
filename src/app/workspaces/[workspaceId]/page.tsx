@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Container, Typography, Box, Button, CircularProgress, Paper, Grid } from '@mui/material';
-import { PeopleAlt as PeopleIcon, Groups as TeamsIcon, Task as TasksIcon } from '@mui/icons-material';
+import { PeopleAlt as PeopleIcon, Groups as TeamsIcon, Task as TasksIcon, CalendarMonth as CalendarIcon } from '@mui/icons-material';
 import Link from 'next/link';
 import { getWorkspaceById } from '@/repository/workspaceRepository';
 import { Workspace } from '@/types/Workspace';
@@ -38,7 +38,7 @@ export default function WorkspaceDetailPage() {
 
   if (loading) {
     return (
-      <Container maxWidth="lg" sx={{ py: 8, textAlign: 'center' }}>
+      <Container sx={{ py: 8, textAlign: 'center' }}>
         <CircularProgress />
       </Container>
     );
@@ -46,7 +46,7 @@ export default function WorkspaceDetailPage() {
 
   if (error || !workspace) {
     return (
-      <Container maxWidth="lg" sx={{ py: 8 }}>
+      <Container sx={{ py: 8 }}>
         <Paper elevation={2} sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="h5" color="error" gutterBottom>
             {error || 'Workspace not found'}
@@ -60,7 +60,7 @@ export default function WorkspaceDetailPage() {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container sx={{ py: 4 }}>
       <Box mb={4}>
         <Typography variant="h4" component="h1" gutterBottom>
           {workspace.name}
@@ -71,7 +71,7 @@ export default function WorkspaceDetailPage() {
       </Box>
 
       <Grid container spacing={3}>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={6} lg={3}>
           <Paper 
             elevation={2} 
             sx={{ 
@@ -94,7 +94,7 @@ export default function WorkspaceDetailPage() {
           </Paper>
         </Grid>
         
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={6} lg={3}>
           <Paper 
             elevation={2} 
             sx={{ 
@@ -117,7 +117,7 @@ export default function WorkspaceDetailPage() {
           </Paper>
         </Grid>
         
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={6} lg={3}>
           <Paper 
             elevation={2} 
             sx={{ 
@@ -136,6 +136,29 @@ export default function WorkspaceDetailPage() {
             <Typography variant="h6" gutterBottom>Tasks</Typography>
             <Typography variant="body2" color="textSecondary">
               Manage tasks in this workspace
+            </Typography>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={6} lg={3}>
+          <Paper 
+            elevation={2} 
+            sx={{ 
+              p: 3, 
+              textAlign: 'center',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              '&:hover': { bgcolor: 'action.hover' }
+            }}
+            component={Link}
+            href={`/workspaces/${workspaceId}/day-capacity`}
+          >
+            <CalendarIcon sx={{ fontSize: 64, mb: 2, color: 'primary.main' }} />
+            <Typography variant="h6" gutterBottom>Day Capacities</Typography>
+            <Typography variant="body2" color="textSecondary">
+              Manage day capacity configurations
             </Typography>
           </Paper>
         </Grid>

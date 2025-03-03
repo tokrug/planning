@@ -16,7 +16,19 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '@/lib/firebase/clientApp';
 import { Task } from '@/types/Task';
 
-const COLLECTION_NAME = 'tasks';
+/**
+ * Get tasks collection reference for a specific workspace
+ */
+const getTasksCollectionRef = (workspaceId: string) => {
+  return collection(db, 'workspaces', workspaceId, 'tasks');
+};
+
+/**
+ * Get task document reference for a specific workspace
+ */
+const getTaskDocRef = (workspaceId: string, taskId: string) => {
+  return doc(db, 'workspaces', workspaceId, 'tasks', taskId);
+};
 
 /**
  * Type representing a task with ID references instead of nested objects
@@ -45,20 +57,23 @@ const taskToTaskWithReferences = (task: Task): Omit<TaskWithReferences, 'id'> =>
 };
 
 /**
- * Get all tasks from the database
+ * Get all tasks from the database for a specific workspace
  */
-export const getAllTasks = async (): Promise<Task[]> => {
+export const getAllTasks = async (workspaceId: string): Promise<Task[]> => {
   try {
     const querySnapshot = await getDocs(
       query(
-        collection(db, COLLECTION_NAME),
+        getTasksCollectionRef(workspaceId),
         orderBy('title')
       )
     );
     
     const tasksWithReferences = querySnapshot.docs.map(doc => ({
       id: doc.id,
-      ...doc.data()
+      ...doc.data(),
+      // Ensure these fields always exist with default values
+      subtaskIds: doc.data().subtaskIds || [],
+      blockedByIds: doc.data().blockedByIds || []
     } as unknown as TaskWithReferences));
 
     // Build a map of all task IDs to tasks for efficient hydration
@@ -80,19 +95,36 @@ export const getAllTasks = async (): Promise<Task[]> => {
     for (const taskRef of tasksWithReferences) {
       const task = taskMap.get(taskRef.id);
       if (task) {
-        // Add subtasks
-        task.subtasks = taskRef.subtaskIds
-          .map(id => taskMap.get(id))
-          .filter((task): task is Task => !!task);
+        // Add subtasks - ensure we're using safe arrays and filtering null values
+        if (Array.isArray(taskRef.subtaskIds)) {
+          task.subtasks = taskRef.subtaskIds
+            .map(id => taskMap.get(id))
+            .filter((subtask): subtask is Task => !!subtask);
+        }
         
-        // Add blockers
-        task.blockedBy = taskRef.blockedByIds
-          .map(id => taskMap.get(id))
-          .filter((task): task is Task => !!task);
+        // Add blockers - ensure we're using safe arrays and filtering null values
+        if (Array.isArray(taskRef.blockedByIds)) {
+          task.blockedBy = taskRef.blockedByIds
+            .map(id => taskMap.get(id))
+            .filter((blocker): blocker is Task => !!blocker);
+        }
       }
     }
     
-    return Array.from(taskMap.values());
+    // Find top-level tasks (those that are not subtasks of any other task)
+    const allTasks = Array.from(taskMap.values());
+    
+    // Everything is working correctly with task relationships, logging for debugging
+    console.log("All tasks loaded:", allTasks.length);
+    allTasks.forEach(task => {
+      const subtasks = task.subtasks || [];
+      if (subtasks.length > 0) {
+        console.log(`Task ${task.id} (${task.title}) has ${subtasks.length} subtasks:`, 
+          subtasks.map(st => `${st.id} (${st.title})`));
+      }
+    });
+    
+    return allTasks;
   } catch (error) {
     console.error('Error fetching tasks:', error);
     throw error;
@@ -100,12 +132,12 @@ export const getAllTasks = async (): Promise<Task[]> => {
 };
 
 /**
- * Get a task by ID
+ * Get a task by ID from a specific workspace
  */
-export const getTaskById = async (id: string): Promise<Task | null> => {
+export const getTaskById = async (workspaceId: string, id: string): Promise<Task | null> => {
   try {
     // We need to get all tasks to properly hydrate the relationships
-    const allTasks = await getAllTasks();
+    const allTasks = await getAllTasks(workspaceId);
     return allTasks.find(task => task.id === id) || null;
   } catch (error) {
     console.error(`Error fetching task with ID ${id}:`, error);
@@ -114,9 +146,9 @@ export const getTaskById = async (id: string): Promise<Task | null> => {
 };
 
 /**
- * Create a new task
+ * Create a new task in a specific workspace
  */
-export const createTask = async (task: Omit<Task, 'id'>): Promise<Task> => {
+export const createTask = async (workspaceId: string, task: Omit<Task, 'id'>): Promise<Task> => {
   try {
     // Generate a new UUID
     const newId = uuidv4();
@@ -127,7 +159,7 @@ export const createTask = async (task: Omit<Task, 'id'>): Promise<Task> => {
     };
     
     // Reference the document with the generated ID
-    const docRef = doc(db, COLLECTION_NAME, newId);
+    const docRef = getTaskDocRef(workspaceId, newId);
     
     // Create the task document
     await setDoc(docRef, taskWithRefs);
@@ -148,11 +180,11 @@ export const createTask = async (task: Omit<Task, 'id'>): Promise<Task> => {
 };
 
 /**
- * Update an existing task
+ * Update an existing task in a specific workspace
  */
-export const updateTask = async (id: string, task: Partial<Omit<Task, 'id'>>): Promise<void> => {
+export const updateTask = async (workspaceId: string, id: string, task: Partial<Omit<Task, 'id'>>): Promise<void> => {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
+    const docRef = getTaskDocRef(workspaceId, id);
     
     // Prepare data for update
     const updateData: Record<string, any> = {};
@@ -170,13 +202,28 @@ export const updateTask = async (id: string, task: Partial<Omit<Task, 'id'>>): P
     }
     
     if (task.subtasks !== undefined) {
-      updateData.subtaskIds = task.subtasks.map(subtask => subtask.id);
+      // Ensure subtasks is an array before mapping
+      if (Array.isArray(task.subtasks)) {
+        updateData.subtaskIds = task.subtasks.map(subtask => subtask.id);
+      } else {
+        // If subtasks is not an array, set it to an empty array
+        console.warn(`Subtasks for task ${id} is not an array:`, task.subtasks);
+        updateData.subtaskIds = [];
+      }
     }
     
     if (task.blockedBy !== undefined) {
-      updateData.blockedByIds = task.blockedBy.map(blocker => blocker.id);
+      // Ensure blockedBy is an array before mapping
+      if (Array.isArray(task.blockedBy)) {
+        updateData.blockedByIds = task.blockedBy.map(blocker => blocker.id);
+      } else {
+        // If blockedBy is not an array, set it to an empty array
+        console.warn(`BlockedBy for task ${id} is not an array:`, task.blockedBy);
+        updateData.blockedByIds = [];
+      }
     }
     
+    console.log(`Updating task ${id} with data:`, updateData);
     await updateDoc(docRef, updateData);
   } catch (error) {
     console.error(`Error updating task with ID ${id}:`, error);
@@ -185,12 +232,12 @@ export const updateTask = async (id: string, task: Partial<Omit<Task, 'id'>>): P
 };
 
 /**
- * Delete a task
+ * Delete a task from a specific workspace
  */
-export const deleteTask = async (id: string): Promise<void> => {
+export const deleteTask = async (workspaceId: string, id: string): Promise<void> => {
   try {
     // Get all tasks to check for relationships
-    const allTasks = await getAllTasks();
+    const allTasks = await getAllTasks(workspaceId);
     
     // Find tasks that reference this task
     for (const task of allTasks) {
@@ -210,12 +257,12 @@ export const deleteTask = async (id: string): Promise<void> => {
       
       // Update the task if needed
       if (updated) {
-        await updateTask(task.id, task);
+        await updateTask(workspaceId, task.id, task);
       }
     }
     
     // Delete the task
-    const docRef = doc(db, COLLECTION_NAME, id);
+    const docRef = getTaskDocRef(workspaceId, id);
     await deleteDoc(docRef);
   } catch (error) {
     console.error(`Error deleting task with ID ${id}:`, error);
@@ -224,24 +271,18 @@ export const deleteTask = async (id: string): Promise<void> => {
 };
 
 /**
- * Add a subtask to a task
+ * Add a subtask to a task in a specific workspace
  */
-export const addSubtask = async (parentId: string, subtaskId: string): Promise<void> => {
+export const addSubtask = async (workspaceId: string, parentId: string, subtask: Task): Promise<void> => {
   try {
     // Get the parent task
-    const parentTask = await getTaskById(parentId);
+    const parentTask = await getTaskById(workspaceId, parentId);
     if (!parentTask) {
       throw new Error(`Parent task with ID ${parentId} not found`);
     }
     
-    // Get the subtask
-    const subtask = await getTaskById(subtaskId);
-    if (!subtask) {
-      throw new Error(`Subtask with ID ${subtaskId} not found`);
-    }
-    
     // Check if the subtask is already a subtask of the parent
-    if (parentTask.subtasks?.some(task => task.id === subtaskId)) {
+    if (parentTask.subtasks?.some(task => task.id === subtask.id)) {
       return; // Subtask is already added
     }
     
@@ -249,20 +290,20 @@ export const addSubtask = async (parentId: string, subtaskId: string): Promise<v
     const updatedSubtasks = [...(parentTask.subtasks || []), subtask];
     
     // Update the parent task
-    await updateTask(parentId, { subtasks: updatedSubtasks });
+    await updateTask(workspaceId, parentId, { subtasks: updatedSubtasks });
   } catch (error) {
-    console.error(`Error adding subtask ${subtaskId} to task ${parentId}:`, error);
+    console.error(`Error adding subtask to task ${parentId}:`, error);
     throw error;
   }
 };
 
 /**
- * Remove a subtask from a task
+ * Remove a subtask from a task in a specific workspace
  */
-export const removeSubtask = async (parentId: string, subtaskId: string): Promise<void> => {
+export const removeSubtask = async (workspaceId: string, parentId: string, subtaskId: string): Promise<void> => {
   try {
     // Get the parent task
-    const parentTask = await getTaskById(parentId);
+    const parentTask = await getTaskById(workspaceId, parentId);
     if (!parentTask) {
       throw new Error(`Parent task with ID ${parentId} not found`);
     }
@@ -276,7 +317,7 @@ export const removeSubtask = async (parentId: string, subtaskId: string): Promis
     const updatedSubtasks = parentTask.subtasks.filter(task => task.id !== subtaskId);
     
     // Update the parent task
-    await updateTask(parentId, { subtasks: updatedSubtasks });
+    await updateTask(workspaceId, parentId, { subtasks: updatedSubtasks });
   } catch (error) {
     console.error(`Error removing subtask ${subtaskId} from task ${parentId}:`, error);
     throw error;
@@ -284,18 +325,18 @@ export const removeSubtask = async (parentId: string, subtaskId: string): Promis
 };
 
 /**
- * Add a blocker to a task
+ * Add a blocker to a task in a specific workspace
  */
-export const addBlocker = async (taskId: string, blockerId: string): Promise<void> => {
+export const addBlocker = async (workspaceId: string, taskId: string, blockerId: string): Promise<void> => {
   try {
     // Get the task
-    const task = await getTaskById(taskId);
+    const task = await getTaskById(workspaceId, taskId);
     if (!task) {
       throw new Error(`Task with ID ${taskId} not found`);
     }
     
     // Get the blocker
-    const blocker = await getTaskById(blockerId);
+    const blocker = await getTaskById(workspaceId, blockerId);
     if (!blocker) {
       throw new Error(`Blocker task with ID ${blockerId} not found`);
     }
@@ -309,7 +350,7 @@ export const addBlocker = async (taskId: string, blockerId: string): Promise<voi
     const updatedBlockers = [...(task.blockedBy || []), blocker];
     
     // Update the task
-    await updateTask(taskId, { blockedBy: updatedBlockers });
+    await updateTask(workspaceId, taskId, { blockedBy: updatedBlockers });
   } catch (error) {
     console.error(`Error adding blocker ${blockerId} to task ${taskId}:`, error);
     throw error;
@@ -317,12 +358,12 @@ export const addBlocker = async (taskId: string, blockerId: string): Promise<voi
 };
 
 /**
- * Remove a blocker from a task
+ * Remove a blocker from a task in a specific workspace
  */
-export const removeBlocker = async (taskId: string, blockerId: string): Promise<void> => {
+export const removeBlocker = async (workspaceId: string, taskId: string, blockerId: string): Promise<void> => {
   try {
     // Get the task
-    const task = await getTaskById(taskId);
+    const task = await getTaskById(workspaceId, taskId);
     if (!task) {
       throw new Error(`Task with ID ${taskId} not found`);
     }
@@ -336,7 +377,7 @@ export const removeBlocker = async (taskId: string, blockerId: string): Promise<
     const updatedBlockers = task.blockedBy.filter(t => t.id !== blockerId);
     
     // Update the task
-    await updateTask(taskId, { blockedBy: updatedBlockers });
+    await updateTask(workspaceId, taskId, { blockedBy: updatedBlockers });
   } catch (error) {
     console.error(`Error removing blocker ${blockerId} from task ${taskId}:`, error);
     throw error;

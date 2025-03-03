@@ -129,8 +129,8 @@ export function WorkspaceList() {
               <React.Fragment key={workspace.id}>
                 {index > 0 && <Divider />}
                 <ListItem
-                  button
                   onClick={() => handleWorkspaceClick(workspace)}
+                  sx={{ cursor: 'pointer' }}
                   secondaryAction={
                     <Box>
                       <IconButton 

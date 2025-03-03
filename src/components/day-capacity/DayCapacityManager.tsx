@@ -22,7 +22,11 @@ import {
   seedDefaultDayCapacities 
 } from '@/repository/dayCapacityRepository';
 
-export const DayCapacityManager: React.FC = () => {
+interface DayCapacityManagerProps {
+  workspaceId: string;
+}
+
+export const DayCapacityManager: React.FC<DayCapacityManagerProps> = ({ workspaceId }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedDayCapacity, setSelectedDayCapacity] = useState<DayCapacity | undefined>(undefined);
   const [notification, setNotification] = useState<{
@@ -51,8 +55,8 @@ export const DayCapacityManager: React.FC = () => {
 
   const handleSeedDefaults = async () => {
     try {
-      await seedDefaultDayCapacities();
-      showNotification('Default day capacities have been seeded successfully', 'success');
+      await seedDefaultDayCapacities(workspaceId);
+      showNotification('Default day capacities seeded successfully', 'success');
     } catch (error) {
       console.error('Error seeding default day capacities:', error);
       showNotification('Failed to seed default day capacities', 'error');
@@ -62,28 +66,30 @@ export const DayCapacityManager: React.FC = () => {
   const handleFormSubmit = async (data: Omit<DayCapacity, 'id'> & { id?: string }) => {
     try {
       if (selectedDayCapacity) {
-        // Update existing day capacity
-        await updateDayCapacity(selectedDayCapacity.id, data);
+        // Updating existing day capacity
+        await updateDayCapacity(workspaceId, selectedDayCapacity.id, {
+          name: data.name,
+          availability: data.availability
+        });
         showNotification('Day capacity updated successfully', 'success');
+      } else if (data.id) {
+        // Creating day capacity with custom ID
+        await createDayCapacityWithId(workspaceId, data.id, {
+          name: data.name,
+          availability: data.availability
+        });
+        showNotification('Day capacity created successfully', 'success');
       } else {
-        // Create new day capacity
-        if (data.id && data.id.trim() !== '') {
-          // Use custom ID - use createDayCapacityWithId which uses setDoc instead of updateDoc
-          await createDayCapacityWithId(data.id, {
-            name: data.name,
-            availability: data.availability
-          });
-        } else {
-          // Auto-generate ID
-          await createDayCapacity({
-            name: data.name,
-            availability: data.availability
-          });
-        }
+        // Creating day capacity with auto-generated ID
+        await createDayCapacity(workspaceId, {
+          name: data.name,
+          availability: data.availability
+        });
         showNotification('Day capacity created successfully', 'success');
       }
       
       setIsFormOpen(false);
+      setSelectedDayCapacity(undefined);
     } catch (error) {
       console.error('Error saving day capacity:', error);
       showNotification('Failed to save day capacity', 'error');
@@ -113,37 +119,41 @@ export const DayCapacityManager: React.FC = () => {
         </Typography>
       </Paper>
 
-      {isFormOpen ? (
-        <DayCapacityForm 
-          dayCapacity={selectedDayCapacity} 
-          onSubmit={handleFormSubmit} 
-          onCancel={handleCloseForm} 
-        />
-      ) : (
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h5" component="h1">Day Capacities</Typography>
         <Box>
-          <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-            <Button 
-              variant="contained" 
-              startIcon={<AddIcon />}
-              onClick={handleCreateClick}
-            >
-              Create New Day Capacity
-            </Button>
-            <Button 
-              variant="outlined" 
-              startIcon={<CloudUploadIcon />}
-              onClick={handleSeedDefaults}
-            >
-              Seed Default Values
-            </Button>
-          </Stack>
-          
-          <DayCapacityList 
-            onEdit={handleEditClick} 
-            onDeleted={() => showNotification('Day capacity deleted successfully', 'success')} 
-          />
+          <Button 
+            variant="outlined" 
+            startIcon={<CloudUploadIcon />} 
+            onClick={handleSeedDefaults}
+            sx={{ mr: 2 }}
+          >
+            Seed Defaults
+          </Button>
+          <Button 
+            variant="contained" 
+            startIcon={<AddIcon />} 
+            onClick={handleCreateClick}
+          >
+            Add Capacity
+          </Button>
         </Box>
-      )}
+      </Stack>
+
+      <Paper sx={{ mb: 3 }}>
+        <DayCapacityList 
+          workspaceId={workspaceId}
+          onEdit={handleEditClick} 
+          onListChanged={() => showNotification('List updated', 'success')} 
+        />
+      </Paper>
+
+      <DayCapacityForm 
+        open={isFormOpen} 
+        dayCapacity={selectedDayCapacity} 
+        onClose={handleCloseForm} 
+        onSubmit={handleFormSubmit} 
+      />
 
       <Snackbar 
         open={notification.open} 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Table, 
   TableBody, 
@@ -17,44 +17,38 @@ import {
 } from '@mui/material';
 import { Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { DayCapacity } from '@/types/DayCapacity';
-import { getAllDayCapacities, deleteDayCapacity } from '@/repository/dayCapacityRepository';
+import { useEntityCollection } from '@/lib/firebase/entityHooks';
 
 interface DayCapacityListProps {
+  workspaceId: string;
   onEdit: (dayCapacity: DayCapacity) => void;
-  onDeleted: () => void;
+  onListChanged: () => void;
 }
 
-export const DayCapacityList: React.FC<DayCapacityListProps> = ({ onEdit, onDeleted }) => {
-  const [dayCapacities, setDayCapacities] = useState<DayCapacity[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchDayCapacities = async () => {
-    try {
-      setLoading(true);
-      const data = await getAllDayCapacities();
-      setDayCapacities(data);
-      setError(null);
-    } catch (err) {
-      setError('Failed to fetch day capacities');
-      console.error('Error fetching day capacities:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDayCapacities();
-  }, []);
+export const DayCapacityList: React.FC<DayCapacityListProps> = ({ 
+  workspaceId, 
+  onEdit, 
+  onListChanged 
+}) => {
+  // Use our real-time hook for day capacities
+  const { 
+    entities: dayCapacities, 
+    loading, 
+    error, 
+    deleteEntity 
+  } = useEntityCollection<DayCapacity>(
+    workspaceId, 
+    'dayCapacities',
+    [], // no conditions
+    [{ field: 'name', direction: 'asc' }] // sort by name
+  );
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this day capacity?')) {
       try {
-        await deleteDayCapacity(id);
-        await fetchDayCapacities();
-        onDeleted();
+        await deleteEntity(id);
+        onListChanged();
       } catch (err) {
-        setError('Failed to delete day capacity');
         console.error('Error deleting day capacity:', err);
       }
     }
@@ -72,7 +66,7 @@ export const DayCapacityList: React.FC<DayCapacityListProps> = ({ onEdit, onDele
   if (error) {
     return (
       <Typography color="error" variant="body1">
-        {error}
+        {error.message}
       </Typography>
     );
   }

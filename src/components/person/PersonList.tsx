@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Table, 
   TableBody, 
@@ -29,58 +29,54 @@ import {
   Work as WorkIcon
 } from '@mui/icons-material';
 import { Person } from '@/types/Person';
-import { getAllPersons, deletePerson } from '@/repository/personRepository';
+import { useEntityCollection } from '@/lib/firebase/entityHooks';
 
 interface PersonListProps {
-  onDeleted: () => void;
+  workspaceId: string;
+  onListChanged: () => void;
 }
 
-export const PersonList: React.FC<PersonListProps> = ({ onDeleted }) => {
-  const [persons, setPersons] = useState<Person[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+export const PersonList: React.FC<PersonListProps> = ({ workspaceId, onListChanged }) => {
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  const fetchPersons = async () => {
-    try {
-      setLoading(true);
-      const data = await getAllPersons();
-      setPersons(data);
-      setError(null);
-    } catch (err) {
-      setError('Failed to fetch people');
-      console.error('Error fetching people:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPersons();
-  }, []);
+  // Use our real-time hook for people
+  const { 
+    entities: persons, 
+    loading, 
+    error, 
+    deleteEntity 
+  } = useEntityCollection<Person>(
+    workspaceId, 
+    'persons',
+    [], // no conditions
+    [{ field: 'name', direction: 'asc' }] // sort by name
+  );
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this person?')) {
       try {
-        await deletePerson(id);
-        await fetchPersons();
-        onDeleted();
+        await deleteEntity(id);
+        onListChanged();
       } catch (err) {
-        setError('Failed to delete person');
         console.error('Error deleting person:', err);
       }
     }
   };
 
   const toggleRow = (id: string) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
   };
 
   const isRowExpanded = (id: string): boolean => {
-    return !!expandedRows[id];
+    return expandedRows.has(id);
   };
 
   // Helper to format day availability
@@ -95,7 +91,7 @@ export const PersonList: React.FC<PersonListProps> = ({ onDeleted }) => {
   if (error) {
     return (
       <Typography color="error" variant="body1">
-        {error}
+        {error.message}
       </Typography>
     );
   }
@@ -107,8 +103,6 @@ export const PersonList: React.FC<PersonListProps> = ({ onDeleted }) => {
           <TableRow>
             <TableCell>Name</TableCell>
             <TableCell>Skills</TableCell>
-            <TableCell>Schedule</TableCell>
-            <TableCell>Exceptions</TableCell>
             <TableCell>Actions</TableCell>
           </TableRow>
         </TableHead>
@@ -117,17 +111,9 @@ export const PersonList: React.FC<PersonListProps> = ({ onDeleted }) => {
             <React.Fragment key={person.id}>
               <TableRow>
                 <TableCell>
-                  <Link href={`/people/${person.id}`} passHref legacyBehavior>
-                    <MuiLink 
-                      sx={{ 
-                        cursor: 'pointer',
-                        textDecoration: 'none',
-                        '&:hover': {
-                          textDecoration: 'underline'
-                        }
-                      }}
-                    >
-                      {person.name}
+                  <Link href={`/workspaces/${workspaceId}/people/${person.id}`} passHref>
+                    <MuiLink underline="hover" color="inherit" sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                      <Typography variant="body1">{person.name}</Typography>
                     </MuiLink>
                   </Link>
                 </TableCell>
@@ -143,123 +129,93 @@ export const PersonList: React.FC<PersonListProps> = ({ onDeleted }) => {
                         sx={{ margin: '2px' }}
                       />
                     ))}
-                    {person.skills.length === 0 && <Typography variant="caption">No skills defined</Typography>}
+                    {person.skills.length === 0 && (
+                      <Typography variant="caption">No skills defined</Typography>
+                    )}
                   </Stack>
                 </TableCell>
                 <TableCell>
-                  <IconButton 
-                    size="small" 
-                    onClick={() => toggleRow(person.id)}
-                    aria-label="expand row"
-                  >
-                    {isRowExpanded(person.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                  </IconButton>
-                  <CalendarIcon sx={{ ml: 1, verticalAlign: 'middle', color: 'primary.main' }} />
-                </TableCell>
-                <TableCell>
-                  {person.scheduleExceptions.length} exceptions
-                </TableCell>
-                <TableCell>
-                  <Tooltip title="Delete">
-                    <IconButton onClick={() => handleDelete(person.id)} color="error">
-                      <DeleteIcon />
-                    </IconButton>
-                  </Tooltip>
+                  <Box>
+                    <Tooltip title="Expand Details">
+                      <IconButton 
+                        size="small" 
+                        onClick={() => toggleRow(person.id)}
+                        aria-label="expand row"
+                      >
+                        {isRowExpanded(person.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="View Details">
+                      <IconButton 
+                        size="small" 
+                        component={Link} 
+                        href={`/workspaces/${workspaceId}/people/${person.id}`}
+                        color="primary"
+                      >
+                        <WorkIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleDelete(person.id)} 
+                        color="error"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
                 </TableCell>
               </TableRow>
               
-              {/* Expanded details row for weekly schedule */}
+              {/* Expanded details row */}
               <TableRow>
-                <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={5}>
+                <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
                   <Collapse in={isRowExpanded(person.id)} timeout="auto" unmountOnExit>
                     <Box sx={{ margin: 2 }}>
-                      <Typography variant="h6" gutterBottom component="div">
-                        Weekly Schedule
+                      <Typography variant="subtitle1" gutterBottom component="div">
+                        Person Details
                       </Typography>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Day</TableCell>
-                            <TableCell>Type</TableCell>
-                            <TableCell>Availability</TableCell>
-                            <TableCell>Visual</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {/* Display weekdays in correct order */}
-                          {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => {
-                            const dayCapacity = person.weeklySchedule[day as keyof typeof person.weeklySchedule];
-                            return (
-                              <TableRow key={day}>
-                                <TableCell component="th" scope="row" sx={{ textTransform: 'capitalize' }}>
-                                  {day}
-                                </TableCell>
-                                <TableCell>{dayCapacity.name}</TableCell>
-                                <TableCell>{formatAvailability(dayCapacity.availability)}</TableCell>
-                                <TableCell>
-                                  <Box sx={{ width: '100%', maxWidth: 100 }}>
-                                    <LinearProgress 
-                                      variant="determinate" 
-                                      value={dayCapacity.availability * 100} 
-                                      sx={{ 
-                                        height: 8, 
-                                        borderRadius: 5,
-                                        bgcolor: 'grey.300',
-                                        '& .MuiLinearProgress-bar': {
-                                          bgcolor: dayCapacity.availability === 0 ? 'error.main' : 'success.main'
-                                        }
-                                      }}
-                                    />
-                                  </Box>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
                       
-                      {person.scheduleExceptions.length > 0 && (
-                        <Box sx={{ mt: 3 }}>
-                          <Typography variant="h6" gutterBottom component="div">
-                            Schedule Exceptions
-                          </Typography>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" color="primary">
+                          <CalendarIcon sx={{ verticalAlign: 'middle', mr: 1 }} fontSize="small" />
+                          Schedule
+                        </Typography>
+                        
+                        {person.weeklySchedule ? (
                           <Table size="small">
                             <TableHead>
                               <TableRow>
-                                <TableCell>Date</TableCell>
                                 <TableCell>Day</TableCell>
-                                <TableCell>Type</TableCell>
                                 <TableCell>Availability</TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {person.scheduleExceptions.map((exception, index) => {
-                                // Convert date string to Date object to get day name
-                                const date = new Date(exception.date);
-                                const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(date);
-                                
-                                return (
-                                  <TableRow key={index}>
-                                    <TableCell>{exception.date}</TableCell>
-                                    <TableCell>{dayName}</TableCell>
-                                    <TableCell>{exception.availability.name}</TableCell>
-                                    <TableCell>{formatAvailability(exception.availability.availability)}</TableCell>
-                                  </TableRow>
-                                );
-                              })}
+                              {Object.entries(person.weeklySchedule).map(([day, dayCapacity]) => (
+                                <TableRow key={day}>
+                                  <TableCell>{day}</TableCell>
+                                  <TableCell>{dayCapacity.name} ({formatAvailability(dayCapacity.availability)})</TableCell>
+                                </TableRow>
+                              ))}
                             </TableBody>
                           </Table>
-                        </Box>
-                      )}
+                        ) : (
+                          <Typography variant="body2" color="textSecondary">
+                            No schedule information available
+                          </Typography>
+                        )}
+                      </Box>
                     </Box>
                   </Collapse>
                 </TableCell>
               </TableRow>
             </React.Fragment>
           ))}
+          
           {persons.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} align="center">
+              <TableCell colSpan={3} align="center">
                 <Typography variant="body1">No people found</Typography>
               </TableCell>
             </TableRow>
